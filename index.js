@@ -3,6 +3,7 @@ import { setCookie, calendar, queryGiftIncomeByRoomId } from './api/index.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { execSync, spawn } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -512,6 +513,89 @@ app.get('/api/daily-income', async (req, res) => {
     });
   } catch (err) {
     res.json({ success: false, message: `请求异常: ${err.message}` });
+  }
+});
+
+/* ========== 管理员 API ========== */
+
+/**
+ * API: 获取系统信息
+ * GET /api/admin/info
+ */
+app.get('/api/admin/info', (req, res) => {
+  try {
+    const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: __dirname, encoding: 'utf-8' }).trim();
+    const lastCommit = execSync('git log -1 --oneline', { cwd: __dirname, encoding: 'utf-8' }).trim();
+    const lastUpdateTime = execSync('git log -1 --format="%ci"', { cwd: __dirname, encoding: 'utf-8' }).trim();
+    const status = execSync('git status --short', { cwd: __dirname, encoding: 'utf-8' }).trim();
+    res.json({
+      success: true,
+      data: {
+        branch: currentBranch,
+        lastCommit,
+        lastUpdateTime,
+        status: status || 'clean',
+        uptime: process.uptime(),
+        pid: process.pid,
+        nodeVersion: process.version,
+      },
+    });
+  } catch (err) {
+    res.json({ success: false, message: `获取信息失败: ${err.message}` });
+  }
+});
+
+/**
+ * API: Git Pull 更新代码
+ * POST /api/admin/pull
+ */
+app.post('/api/admin/pull', (req, res) => {
+  try {
+    const output = execSync('git pull', { cwd: __dirname, encoding: 'utf-8', timeout: 60000 });
+    res.json({ success: true, data: { output: output.trim() } });
+  } catch (err) {
+    res.json({ success: false, message: `Git pull 失败: ${err.message}` });
+  }
+});
+
+/**
+ * 自重启：spawn 新进程后退出当前进程
+ */
+function restartSelf() {
+  const child = spawn(process.argv[0], [fileURLToPath(import.meta.url), ...process.argv.slice(2)], {
+    cwd: __dirname,
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env },
+  });
+  child.unref();
+  process.exit(0);
+}
+
+/**
+ * API: 热更新（重启服务）
+ * POST /api/admin/restart
+ */
+app.post('/api/admin/restart', (req, res) => {
+  res.json({ success: true, message: '服务即将重启...' });
+  setTimeout(() => {
+    restartSelf();
+  }, 500);
+});
+
+/**
+ * API: 一键更新（git pull + 重启）
+ * POST /api/admin/update
+ */
+app.post('/api/admin/update', (req, res) => {
+  try {
+    const output = execSync('git pull', { cwd: __dirname, encoding: 'utf-8', timeout: 60000 });
+    res.json({ success: true, message: '更新成功，服务即将重启...', data: { output: output.trim() } });
+    setTimeout(() => {
+      restartSelf();
+    }, 500);
+  } catch (err) {
+    res.json({ success: false, message: `更新失败: ${err.message}` });
   }
 });
 
