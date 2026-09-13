@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>主播流水查询</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    h1 { text-align: center; color: #1a1a2e; margin-bottom: 24px; font-size: 28px; font-weight: 600; }
+    .card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .card-title { font-size: 16px; font-weight: 600; color: #1a1a2e; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #f0f0f0; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group label { font-size: 13px; color: #666; margin-bottom: 6px; font-weight: 500; }
+    .form-group input, .form-group textarea { padding: 10px 12px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 14px; transition: border-color 0.2s; outline: none; }
+    .form-group input:focus, .form-group textarea:focus { border-color: #4361ee; box-shadow: 0 0 0 2px rgba(67,97,238,0.1); }
+    .form-group.full { grid-column: 1 / -1; }
+    .form-group textarea { resize: vertical; min-height: 80px; font-family: monospace; font-size: 12px; }
+    .btn-row { display: flex; gap: 12px; margin-top: 20px; }
+    .btn { padding: 10px 24px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .btn-primary { background: #4361ee; color: #fff; }
+    .btn-primary:hover { background: #3a56d4; }
+    .btn-primary:disabled { background: #a0a0a0; cursor: not-allowed; }
+    .btn-secondary { background: #f0f0f0; color: #333; }
+    .btn-secondary:hover { background: #e0e0e0; }
+    .btn-sm { padding: 6px 14px; font-size: 13px; }
+    .btn-danger { background: #ff4d4f; color: #fff; }
+    .btn-danger:hover { background: #d9363e; }
+    .btn-success { background: #52c41a; color: #fff; }
+    .btn-success:hover { background: #3f9914; }
+    .btn-warning { background: #fa8c16; color: #fff; }
+    .btn-warning:hover { background: #d46b08; }
+    /* Anchor tags */
+    .anchor-section { margin-top: 8px; }
+    .anchor-input-row { display: flex; gap: 8px; align-items: center; }
+    .anchor-input-row input { flex: 1; min-width: 0; }
+    .anchor-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .anchor-tag { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 13px; cursor: pointer; transition: all 0.2s; border: 2px solid #e0e0e0; background: #fff; user-select: none; }
+    .anchor-tag:hover { border-color: #4361ee; }
+    .anchor-tag.active { background: #4361ee; color: #fff; border-color: #4361ee; }
+    .anchor-tag .tag-name { max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .anchor-tag .tag-id { font-size: 11px; opacity: 0.7; }
+    .anchor-tag .remove { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.1); font-size: 12px; line-height: 1; }
+    .anchor-tag.active .remove { background: rgba(255,255,255,0.3); }
+    .anchor-tag .remove:hover { background: #ff4d4f; color: #fff; }
+    /* Mapping table */
+    .mapping-card { margin-bottom: 20px; }
+    .mapping-input-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .mapping-input-row input { flex: 1; min-width: 0; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 14px; outline: none; }
+    .mapping-input-row input:focus { border-color: #4361ee; box-shadow: 0 0 0 2px rgba(67,97,238,0.1); }
+    .mapping-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .mapping-table th { text-align: left; padding: 8px 12px; background: #f8f9fa; color: #666; font-weight: 600; font-size: 13px; border-bottom: 2px solid #e8e8e8; }
+    .mapping-table td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
+    .mapping-table .arrow-col { color: #999; text-align: center; width: 40px; }
+    .mapping-empty { text-align: center; color: #999; font-size: 13px; padding: 12px; }
+    .stage-name { color: #7b2ff7; font-weight: 600; }
+    /* Cookie */
+    .cookie-row { display: flex; gap: 8px; align-items: flex-end; }
+    .cookie-row textarea { flex: 1; }
+    .cookie-actions { display: flex; flex-direction: column; gap: 6px; }
+    .cookie-hint { font-size: 12px; color: #999; margin-top: 4px; }
+    .cookie-status { font-size: 12px; margin-top: 4px; }
+    .cookie-status.success { color: #52c41a; }
+    .cookie-status.error { color: #ff4d4f; }
+    /* Progress bar */
+    .progress-wrap { display: none; margin-bottom: 20px; }
+    .progress-wrap.show { display: block; }
+    .progress-bar-bg { background: #e8e8e8; border-radius: 8px; height: 24px; overflow: hidden; position: relative; }
+    .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #4361ee, #7b2ff7); border-radius: 8px; transition: width 0.3s ease; min-width: 0; }
+    .progress-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 12px; font-weight: 600; color: #333; white-space: nowrap; }
+    /* Loading & Error */
+    .loading { display: none; text-align: center; padding: 20px; color: #999; }
+    .loading.show { display: block; }
+    .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #e0e0e0; border-top-color: #4361ee; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error { display: none; background: #fff2f0; border: 1px solid #ffccc7; border-radius: 8px; padding: 12px 16px; color: #cf1322; margin-bottom: 16px; }
+    .error.show { display: block; }
+    /* Summary */
+    .summary { display: none; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .summary.show { display: grid; }
+    .summary-item { background: linear-gradient(135deg, #4361ee, #3a0ca3); color: #fff; border-radius: 12px; padding: 20px; text-align: center; }
+    .summary-item .label { font-size: 13px; opacity: 0.85; margin-bottom: 8px; }
+    .summary-item .value { font-size: 24px; font-weight: 700; }
+    .summary-item .unit { font-size: 12px; opacity: 0.7; margin-top: 4px; }
+    /* Day cards */
+    .day-card { background: #fff; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
+    .day-header { background: #fafafa; padding: 12px 20px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer; user-select: none; }
+    .day-header:hover { background: #f5f5f5; }
+    .day-date { font-weight: 600; font-size: 15px; color: #1a1a2e; }
+    .day-meta { font-size: 13px; color: #888; }
+    .day-income { margin-left: auto; font-weight: 600; color: #4361ee; font-size: 15px; }
+    .day-body { padding: 0 20px; max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+    .day-body.open { max-height: 2000px; padding: 16px 20px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; padding: 10px 12px; background: #f8f9fa; color: #666; font-weight: 600; font-size: 13px; border-bottom: 2px solid #e8e8e8; white-space: nowrap; }
+    td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
+    tr:hover td { background: #fafbfc; }
+    .avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+    .income-highlight { color: #4361ee; font-weight: 600; }
+    .no-data { text-align: center; padding: 40px; color: #999; font-size: 15px; }
+    .results { display: none; }
+    .results.show { display: block; }
+    .arrow { transition: transform 0.3s; display: inline-block; margin-right: 8px; color: #999; }
+    .arrow.open { transform: rotate(90deg); }
+    /* Daily Report Modal */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-overlay.show { display: flex; }
+    .modal { background: #fff; border-radius: 16px; width: 90%; max-width: 800px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 8px 40px rgba(0,0,0,0.15); }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid #f0f0f0; }
+    .modal-header h2 { font-size: 18px; font-weight: 600; color: #1a1a2e; }
+    .modal-close { width: 32px; height: 32px; border-radius: 50%; border: none; background: #f0f0f0; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
+    .modal-close:hover { background: #e0e0e0; }
+    .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
+    .report-text { width: 100%; min-height: 300px; border: 1px solid #d9d9d9; border-radius: 8px; padding: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.8; resize: vertical; outline: none; background: #fafbfc; }
+    .report-text:focus { border-color: #4361ee; box-shadow: 0 0 0 2px rgba(67,97,238,0.1); }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid #f0f0f0; display: flex; gap: 12px; justify-content: flex-end; }
+    .report-loading { text-align: center; padding: 40px; color: #999; }
+    .report-loading .spinner { margin-right: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>主播流水查询</h1>
+
+    <div class="card">
+      <div class="card-title">查询参数</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>月份</label>
+          <input type="month" id="month" onchange="onMonthChange()">
+        </div>
+        <div class="form-group">
+          <label>开始日期</label>
+          <input type="date" id="start_date">
+        </div>
+        <div class="form-group">
+          <label>结束日期</label>
+          <input type="date" id="end_date">
+        </div>
+        <div class="form-group full">
+          <label>主播</label>
+          <div class="anchor-section">
+            <div class="anchor-input-row">
+              <input type="text" id="anchor_name_input" placeholder="主播名称" style="flex:0.8;">
+              <input type="text" id="anchor_id_input" placeholder="主播ID">
+              <button class="btn btn-primary btn-sm" onclick="addAnchor()">添加</button>
+            </div>
+            <div class="anchor-tags" id="anchor_tags"></div>
+          </div>
+        </div>
+        <div class="form-group full">
+          <label>Cookie</label>
+          <div class="cookie-row">
+            <textarea id="cookie" placeholder="粘贴 PowerShell / cURL 命令或原始 Cookie，点击「提取Cookie」自动解析"></textarea>
+            <div class="cookie-actions">
+              <button class="btn btn-success btn-sm" onclick="extractCookie()">提取Cookie</button>
+              <button class="btn btn-secondary btn-sm" onclick="clearCookie()">清空</button>
+            </div>
+          </div>
+          <div class="cookie-hint">支持粘贴浏览器复制的 PowerShell / cURL 请求，自动提取 cookie 字段</div>
+          <div class="cookie-status" id="cookie_status"></div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="queryBtn" onclick="doQuery()">查询</button>
+        <button class="btn btn-warning" id="dailyReportBtn" onclick="generateDailyReport()">生成日报</button>
+        <button class="btn btn-secondary" onclick="clearForm()">清空</button>
+      </div>
+    </div>
+
+    <div class="card mapping-card">
+      <div class="card-title">艺名映射</div>
+      <div class="mapping-input-row">
+        <input type="text" id="map_nickname_input" placeholder="抖音号">
+        <span style="color:#999;">→</span>
+        <input type="text" id="map_stagename_input" placeholder="艺名（自定义显示名）">
+        <button class="btn btn-primary btn-sm" onclick="addMapping()">添加</button>
+      </div>
+      <div id="mapping_list"></div>
+    </div>
+
+    <div class="error" id="error"></div>
+    <div class="progress-wrap" id="progress_wrap">
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progress_fill" style="width:0%"></div>
+        <div class="progress-text" id="progress_text">0%</div>
+      </div>
+    </div>
+    <div class="loading" id="loading"><span class="spinner"></span>正在查询中，请稍候...</div>
+
+    <div class="summary" id="summary">
+      <div class="summary-item">
+        <div class="label">礼物总收入</div>
+        <div class="value" id="totalIncome">0</div>
+        <div class="unit">抖币</div>
+      </div>
+      <div class="summary-item">
+        <div class="label">星光总收入</div>
+        <div class="value" id="totalStarGuardIncome">0</div>
+        <div class="unit">抖币</div>
+      </div>
+      <div class="summary-item">
+        <div class="label">其他总收入</div>
+        <div class="value" id="totalOtherIncome">0</div>
+        <div class="unit">抖币</div>
+      </div>
+      <div class="summary-item">
+        <div class="label">总涨粉数</div>
+        <div class="value" id="totalIncreaseFans">0</div>
+        <div class="unit">人</div>
+      </div>
+    </div>
+
+    <div class="results" id="results"></div>
+  </div>
+
+  <!-- 日报弹窗 -->
+  <div class="modal-overlay" id="reportModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="reportModalTitle">日报</h2>
+        <button class="modal-close" onclick="closeReportModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="report-loading" id="reportLoading"><span class="spinner"></span>正在生成日报，请稍候...</div>
+        <textarea class="report-text" id="reportText" style="display:none;" readonly></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary btn-sm" id="copyReportBtn" onclick="copyReport()" style="display:none;">复制日报</button>
+        <button class="btn btn-secondary btn-sm" onclick="closeReportModal()">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ========== 常量 ========== */
+    const FORM_KEY = 'anchor_query_form';
+    const ANCHORS_KEY = 'anchor_query_anchors';
+    const SELECTED_ANCHOR_KEY = 'anchor_query_selected_anchor';
+
+    /* ========== 日期默认最近7天 ========== */
+    function initDates() {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 6);
+      document.getElementById('start_date').value = fmtDate(start);
+      document.getElementById('end_date').value = fmtDate(end);
+      // 设置月份为当前月
+      const y = end.getFullYear();
+      const m = String(end.getMonth() + 1).padStart(2, '0');
+      document.getElementById('month').value = `${y}-${m}`;
+    }
+
+    function onMonthChange() {
+      const val = document.getElementById('month').value;
+      if (!val) return;
+      const [year, month] = val.split('-').map(Number);
+      const firstDay = new Date(year, month - 1, 1);
+      const lastDay = new Date(year, month, 0);
+      const start = new Date(firstDay);
+      start.setDate(start.getDate() - start.getDay());
+      const end = new Date(lastDay);
+      end.setDate(end.getDate() + (6 - end.getDay()));
+      document.getElementById('start_date').value = fmtDate(start);
+      document.getElementById('end_date').value = fmtDate(end);
+      saveForm();
+    }
+
+    function fmtDate(d) {
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    /* ========== 主播管理 (name + id) ========== */
+    function getAnchors() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(ANCHORS_KEY)) || [];
+        // 兼容旧格式：纯字符串ID数组 → {id, name} 对象数组
+        return raw.map(a => typeof a === 'string' ? { id: a, name: a } : a);
+      } catch { return []; }
+    }
+    function getSelectedAnchor() {
+      try { return localStorage.getItem(SELECTED_ANCHOR_KEY) || ''; } catch { return ''; }
+    }
+    function setSelectedAnchor(id) {
+      localStorage.setItem(SELECTED_ANCHOR_KEY, id);
+      renderAnchors();
+    }
+    function addAnchor() {
+      const nameInput = document.getElementById('anchor_name_input');
+      const idInput = document.getElementById('anchor_id_input');
+      const name = nameInput.value.trim();
+      const id = idInput.value.trim();
+      if (!id) return;
+      const anchors = getAnchors();
+      if (!anchors.find(a => a.id === id)) {
+        anchors.push({ id, name: name || id });
+        localStorage.setItem(ANCHORS_KEY, JSON.stringify(anchors));
+      }
+      localStorage.setItem(SELECTED_ANCHOR_KEY, id);
+      nameInput.value = '';
+      idInput.value = '';
+      renderAnchors();
+    }
+    function removeAnchor(id, e) {
+      e.stopPropagation();
+      const anchors = getAnchors().filter(a => a.id !== id);
+      localStorage.setItem(ANCHORS_KEY, JSON.stringify(anchors));
+      if (getSelectedAnchor() === id) {
+        localStorage.setItem(SELECTED_ANCHOR_KEY, anchors.length ? anchors[0].id : '');
+      }
+      renderAnchors();
+    }
+    function renderAnchors() {
+      const anchors = getAnchors();
+      const selected = getSelectedAnchor();
+      const container = document.getElementById('anchor_tags');
+      if (anchors.length === 0) {
+        container.innerHTML = '<span style="color:#999;font-size:13px;">暂无主播，请在上方输入名称和ID并添加</span>';
+        return;
+      }
+      container.innerHTML = anchors.map(a =>
+        `<span class="anchor-tag ${a.id === selected ? 'active' : ''}" onclick="setSelectedAnchor('${a.id}')">
+          <span class="tag-name">${escHtml(a.name)}</span>
+          <span class="tag-id">(${a.id})</span>
+          <span class="remove" onclick="removeAnchor('${a.id}', event)">&times;</span>
+        </span>`
+      ).join('');
+    }
+    function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    // 回车添加
+    document.getElementById('anchor_id_input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); addAnchor(); }
+    });
+    document.getElementById('anchor_name_input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('anchor_id_input').focus(); }
+    });
+
+    /* ========== 艺名映射管理 ========== */
+    const MAPPING_KEY = 'anchor_aweme_stage_mapping';
+    function getMappings() {
+      try { return JSON.parse(localStorage.getItem(MAPPING_KEY)) || {}; } catch { return {}; }
+    }
+    function addMapping() {
+      const nkInput = document.getElementById('map_nickname_input');
+      const snInput = document.getElementById('map_stagename_input');
+      const awemeId = nkInput.value.trim();
+      const stageName = snInput.value.trim();
+      if (!awemeId || !stageName) return;
+      const mappings = getMappings();
+      mappings[awemeId] = stageName;
+      localStorage.setItem(MAPPING_KEY, JSON.stringify(mappings));
+      nkInput.value = '';
+      snInput.value = '';
+      renderMappings();
+    }
+    function removeMapping(awemeId) {
+      const mappings = getMappings();
+      delete mappings[awemeId];
+      localStorage.setItem(MAPPING_KEY, JSON.stringify(mappings));
+      renderMappings();
+    }
+    function renderMappings() {
+      const mappings = getMappings();
+      const container = document.getElementById('mapping_list');
+      const keys = Object.keys(mappings);
+      if (keys.length === 0) {
+        container.innerHTML = '<div class="mapping-empty">暂无映射，添加后查询结果将同时显示昵称和艺名</div>';
+        return;
+      }
+      let html = '<table class="mapping-table"><thead><tr><th>抖音号</th><th></th><th>艺名</th><th></th></tr></thead><tbody>';
+      for (const awId of keys) {
+        html += `<tr>
+          <td>${escHtml(awId)}</td>
+          <td class="arrow-col">→</td>
+          <td class="stage-name">${escHtml(mappings[awId])}</td>
+          <td><button class="btn btn-secondary btn-sm" onclick="removeMapping('${escHtml(awId).replace(/'/g,"\\'")}')">删除</button></td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+    function getStageName(awemeDisplayId) {
+      return getMappings()[awemeDisplayId] || '';
+    }
+    document.getElementById('map_stagename_input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); addMapping(); }
+    });
+    document.getElementById('map_nickname_input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('map_stagename_input').focus(); }
+    });
+
+    /* ========== Cookie 自动提取 ========== */
+    function extractCookie() {
+      const textarea = document.getElementById('cookie');
+      const text = textarea.value.trim();
+      const statusEl = document.getElementById('cookie_status');
+      if (!text) { statusEl.textContent = '请先粘贴内容'; statusEl.className = 'cookie-status error'; return; }
+      let cookie = null;
+      const psMatch = text.match(/"cookie"\s*=\s*"([^"]+)"/i);
+      if (psMatch) cookie = psMatch[1];
+      if (!cookie) { const m = text.match(/(?:-H\s+['"]|header\s+)cookie:\s*([^'"]+)/i); if (m) cookie = m[1].trim(); }
+      if (!cookie) { const m = text.match(/(?:^|\n)\s*cookie\s*:\s*(.+)/i); if (m) cookie = m[1].trim(); }
+      if (!cookie && /^[a-zA-Z_][a-zA-Z0-9_]*=/.test(text) && text.includes('=')) cookie = text;
+      if (cookie) {
+        textarea.value = cookie;
+        statusEl.textContent = 'Cookie 提取成功';
+        statusEl.className = 'cookie-status success';
+        saveForm();
+      } else {
+        statusEl.textContent = '未识别到 Cookie，请检查粘贴内容或直接输入 Cookie 字符串';
+        statusEl.className = 'cookie-status error';
+      }
+    }
+    function clearCookie() {
+      document.getElementById('cookie').value = '';
+      document.getElementById('cookie_status').textContent = '';
+      saveForm();
+    }
+
+    /* ========== 表单缓存 ========== */
+    function saveForm() {
+      const data = {
+        month: document.getElementById('month').value,
+        start_date: document.getElementById('start_date').value,
+        end_date: document.getElementById('end_date').value,
+        cookie: document.getElementById('cookie').value,
+      };
+      localStorage.setItem(FORM_KEY, JSON.stringify(data));
+    }
+    function loadForm() {
+      try {
+        const raw = localStorage.getItem(FORM_KEY);
+        if (!raw) return false;
+        const data = JSON.parse(raw);
+        let loaded = false;
+        if (data.month) { document.getElementById('month').value = data.month; loaded = true; }
+        if (data.start_date) { document.getElementById('start_date').value = data.start_date; loaded = true; }
+        if (data.end_date) { document.getElementById('end_date').value = data.end_date; loaded = true; }
+        if (data.cookie) { document.getElementById('cookie').value = data.cookie; }
+        return loaded;
+      } catch { return false; }
+    }
+    function clearForm() {
+      document.getElementById('month').value = '';
+      document.getElementById('start_date').value = '';
+      document.getElementById('end_date').value = '';
+      document.getElementById('cookie').value = '';
+      document.getElementById('cookie_status').textContent = '';
+      document.getElementById('results').classList.remove('show');
+      document.getElementById('summary').classList.remove('show');
+      hideError();
+      localStorage.removeItem(FORM_KEY);
+    }
+
+    /* ========== 进度条 ========== */
+    function setProgress(current, total, msg) {
+      const pct = total > 0 ? Math.round(current / total * 100) : 0;
+      document.getElementById('progress_fill').style.width = pct + '%';
+      document.getElementById('progress_text').textContent = msg || `${pct}%`;
+    }
+    function showProgress() { document.getElementById('progress_wrap').classList.add('show'); }
+    function hideProgress() { document.getElementById('progress_wrap').classList.remove('show'); setProgress(0, 0); }
+
+    /* ========== 工具函数 ========== */
+    function formatNumber(n) { return Number(n).toLocaleString('zh-CN'); }
+    function formatDuration(s) {
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      return h > 0 ? `${h}时${m}分${sec}秒` : m > 0 ? `${m}分${sec}秒` : `${sec}秒`;
+    }
+    function showError(msg) { const el = document.getElementById('error'); el.textContent = msg; el.classList.add('show'); }
+    function hideError() { document.getElementById('error').classList.remove('show'); }
+    function toggleDay(el) {
+      const body = el.nextElementSibling;
+      const arrow = el.querySelector('.arrow');
+      body.classList.toggle('open');
+      arrow.classList.toggle('open');
+    }
+
+    /* ========== 查询（SSE 进度流） ========== */
+    async function doQuery() {
+      hideError();
+      const anchor_id = getSelectedAnchor();
+      const month = document.getElementById('month').value.trim();
+      const start_date = document.getElementById('start_date').value.trim();
+      const end_date = document.getElementById('end_date').value.trim();
+      const cookie = document.getElementById('cookie').value.trim();
+
+      if (!month || !start_date || !end_date || !anchor_id || !cookie) {
+        showError('请填写所有参数并选择一个主播');
+        return;
+      }
+
+      const btn = document.getElementById('queryBtn');
+      const loading = document.getElementById('loading');
+      btn.disabled = true;
+      loading.classList.add('show');
+      document.getElementById('results').classList.remove('show');
+      document.getElementById('summary').classList.remove('show');
+      showProgress();
+      setProgress(0, 0, '准备中...');
+
+      try {
+        const res = await fetch('/api/query/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ month, start_date, end_date, anchor_id, cookie }),
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let allDays = [];
+        let summary = { totalIncome: 0, totalStarGuardIncome: 0, totalOtherIncome: 0, totalIncreaseFans: 0 };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const jsonStr = line.slice(6).trim();
+            if (!jsonStr) continue;
+            try {
+              const evt = JSON.parse(jsonStr);
+              if (evt.type === 'progress') {
+                setProgress(evt.current, evt.total, evt.message || `${evt.current}/${evt.total}`);
+              } else if (evt.type === 'day') {
+                allDays.push(evt.data);
+                for (const s of evt.data.series) {
+                  summary.totalIncome += Number(s.income) || 0;
+                  summary.totalStarGuardIncome += Number(s.star_guard_income) || 0;
+                  summary.totalOtherIncome += Number(s.other_income) || 0;
+                  summary.totalIncreaseFans += Number(s.increase_fans) || 0;
+                }
+              } else if (evt.type === 'done') {
+                allDays.sort((a, b) => a.date.localeCompare(b.date));
+                renderResults({ days: allDays, summary });
+              } else if (evt.type === 'error') {
+                showError(evt.message || '查询失败');
+              }
+            } catch (e) {}
+          }
+        }
+      } catch (err) {
+        showError('网络请求失败: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        loading.classList.remove('show');
+        hideProgress();
+      }
+    }
+
+    function renderResults(data) {
+      const { days, summary } = data;
+      document.getElementById('totalIncome').textContent = formatNumber(summary.totalIncome);
+      document.getElementById('totalStarGuardIncome').textContent = formatNumber(summary.totalStarGuardIncome);
+      document.getElementById('totalOtherIncome').textContent = formatNumber(summary.totalOtherIncome);
+      document.getElementById('totalIncreaseFans').textContent = formatNumber(summary.totalIncreaseFans);
+      document.getElementById('summary').classList.add('show');
+
+      const container = document.getElementById('results');
+      if (days.length === 0) {
+        container.innerHTML = '<div class="no-data">该时间段内没有直播记录</div>';
+        container.classList.add('show');
+        return;
+      }
+
+      let html = '';
+      for (const day of days) {
+        const dayIncome = day.series.reduce((sum, s) => sum + (Number(s.income) || 0), 0);
+        html += `<div class="day-card">
+          <div class="day-header" onclick="toggleDay(this)">
+            <span class="arrow">&#9654;</span>
+            <span class="day-date">${day.date}</span>
+            <span class="day-meta">时长 ${formatDuration(Number(day.liveDuration)||0)} | 房间 ${day.roomId}</span>
+            <span class="day-income">${formatNumber(dayIncome)} 抖币</span>
+          </div>
+          <div class="day-body">`;
+        if (day.series.length === 0) {
+          html += '<div class="no-data">暂无流水数据</div>';
+        } else {
+          html += `<table><thead><tr>
+            <th></th><th>昵称</th><th>艺名</th><th>抖音号</th><th>礼物收入</th><th>星光收入</th><th>其他收入</th><th>涨粉</th>
+          </tr></thead><tbody>`;
+          for (const s of day.series) {
+            html += `<tr>
+              <td><img class="avatar" src="${s.avatar}" onerror="this.style.display='none'"></td>
+              <td>${escHtml(s.nickname)}</td>
+              <td>${getStageName(s.aweme_display_id) ? '<span class="stage-name">' + escHtml(getStageName(s.aweme_display_id)) + '</span>' : '<span style="color:#ccc">-</span>'}</td>
+              <td>${s.aweme_display_id}</td>
+              <td class="income-highlight">${formatNumber(s.income)}</td>
+              <td>${formatNumber(s.star_guard_income)}</td>
+              <td>${formatNumber(s.other_income)}</td>
+              <td>${s.increase_fans}</td>
+            </tr>`;
+          }
+          html += '</tbody></table>';
+        }
+        html += '</div></div>';
+      }
+      container.innerHTML = html;
+      container.classList.add('show');
+    }
+
+    /* ========== 日报生成 ========== */
+    function openReportModal() {
+      document.getElementById('reportModal').classList.add('show');
+    }
+    function closeReportModal() {
+      document.getElementById('reportModal').classList.remove('show');
+    }
+
+    async function generateDailyReport() {
+      const anchors = getAnchors();
+      const cookie = document.getElementById('cookie').value.trim();
+
+      if (anchors.length === 0) {
+        showError('请先添加主播');
+        return;
+      }
+      if (!cookie) {
+        showError('请填写Cookie');
+        return;
+      }
+
+      hideError();
+      openReportModal();
+      document.getElementById('reportLoading').style.display = 'block';
+      document.getElementById('reportText').style.display = 'none';
+      document.getElementById('copyReportBtn').style.display = 'none';
+
+      // 默认查询当天
+      const today = new Date();
+      const dateStr = fmtDate(today);
+
+      try {
+        const res = await fetch('/api/daily-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ anchors, cookie, date: dateStr }),
+        });
+
+        const result = await res.json();
+
+        if (!result.success) {
+          document.getElementById('reportLoading').innerHTML = `<span style="color:#ff4d4f;">生成失败: ${escHtml(result.message)}</span>`;
+          return;
+        }
+
+        const { report, summary, date } = result.data;
+        const reportText = formatDailyReport(report, summary, date);
+
+        document.getElementById('reportLoading').style.display = 'none';
+        document.getElementById('reportText').value = reportText;
+        document.getElementById('reportText').style.display = 'block';
+        document.getElementById('copyReportBtn').style.display = 'inline-block';
+        document.getElementById('reportModalTitle').textContent = `日报 - ${date}`;
+      } catch (err) {
+        document.getElementById('reportLoading').innerHTML = `<span style="color:#ff4d4f;">请求失败: ${escHtml(err.message)}</span>`;
+      }
+    }
+
+    function formatDailyReport(report, summary, date) {
+      const mappings = getMappings();
+      let lines = [];
+      lines.push(`📊 直播日报 ${date}`);
+      lines.push('━━━━━━━━━━━━━━━━━━━━━━━━');
+      lines.push('');
+
+      // 汇总信息
+      lines.push(`📋 汇总: ${summary.liveCount}/${summary.totalAnchors} 位主播开播`);
+      lines.push(`💰 礼物总收入: ${formatNumber(summary.totalIncome)} 抖币`);
+      lines.push(`⭐ 星光总收入: ${formatNumber(summary.totalStarGuardIncome)} 抖币`);
+      lines.push(`📦 其他总收入: ${formatNumber(summary.totalOtherIncome)} 抖币`);
+      lines.push(`📈 总涨粉数: ${formatNumber(summary.totalIncreaseFans)} 人`);
+      lines.push('');
+      lines.push('━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      // 各主播详情
+      for (const anchor of report) {
+        lines.push('');
+        const stageName = mappings[anchor.id] ? `（${mappings[anchor.id]}）` : '';
+        lines.push(`👤 ${anchor.name}${stageName}`);
+
+        if (anchor.error) {
+          lines.push(`   ❌ ${anchor.error}`);
+          continue;
+        }
+
+        if (!anchor.hasLive) {
+          lines.push('   未开播');
+          continue;
+        }
+
+        lines.push(`   ⏱ 直播时长: ${formatDuration(anchor.liveDuration)}`);
+        lines.push(`   💰 礼物收入: ${formatNumber(anchor.totalIncome)} 抖币`);
+        lines.push(`   ⭐ 星光收入: ${formatNumber(anchor.totalStarGuardIncome)} 抖币`);
+        lines.push(`   📦 其他收入: ${formatNumber(anchor.totalOtherIncome)} 抖币`);
+        lines.push(`   📈 涨粉: ${formatNumber(anchor.totalIncreaseFans)} 人`);
+
+        // 展示各子主播(成员)明细
+        if (anchor.members && anchor.members.length > 0) {
+          // 按收入降序排列
+          const sortedMembers = [...anchor.members].sort((a, b) => b.income - a.income);
+          lines.push('');
+          lines.push('   ── 成员明细 ──');
+          for (const m of sortedMembers) {
+            const memberStageName = mappings[m.aweme_display_id] ? `（${mappings[m.aweme_display_id]}）` : '';
+            const displayName = m.nickname || m.aweme_display_id || '未知';
+            lines.push(`   🎤 ${displayName}${memberStageName}`);
+            lines.push(`      💰 ${formatNumber(m.income)} 抖币 | ⭐ ${formatNumber(m.star_guard_income)} | 📦 ${formatNumber(m.other_income)} | 📈 涨粉 ${formatNumber(m.increase_fans)}`);
+          }
+        }
+      }
+
+      lines.push('');
+      lines.push('━━━━━━━━━━━━━━━━━━━━━━━━');
+      lines.push(`生成时间: ${new Date().toLocaleString('zh-CN')}`);
+
+      return lines.join('\n');
+    }
+
+    function copyReport() {
+      const text = document.getElementById('reportText').value;
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copyReportBtn');
+        const orig = btn.textContent;
+        btn.textContent = '已复制 ✓';
+        setTimeout(() => { btn.textContent = orig; }, 2000);
+      }).catch(() => {
+        // fallback
+        const textarea = document.getElementById('reportText');
+        textarea.select();
+        document.execCommand('copy');
+        const btn = document.getElementById('copyReportBtn');
+        const orig = btn.textContent;
+        btn.textContent = '已复制 ✓';
+        setTimeout(() => { btn.textContent = orig; }, 2000);
+      });
+    }
+
+    /* ========== 初始化 ========== */
+    const hasCached = loadForm();
+    if (!hasCached) initDates();
+    renderAnchors();
+    renderMappings();
+    ['month', 'start_date', 'end_date', 'cookie'].forEach(id => {
+      document.getElementById(id).addEventListener('input', saveForm);
+      document.getElementById(id).addEventListener('change', saveForm);
+    });
+  </script>
+</body>
+</html>
