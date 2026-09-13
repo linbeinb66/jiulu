@@ -240,6 +240,38 @@
     const ANCHORS_KEY = 'anchor_query_anchors';
     const SELECTED_ANCHOR_KEY = 'anchor_query_selected_anchor';
 
+    /* ========== 服务端存储 ========== */
+    const serverStorage = {
+      async get(key) {
+        try {
+          const res = await fetch(`/api/storage?key=${encodeURIComponent(key)}`);
+          const json = await res.json();
+          return json.success ? json.data : null;
+        } catch { return null; }
+      },
+      async getAll() {
+        try {
+          const res = await fetch('/api/storage');
+          const json = await res.json();
+          return json.success ? json.data : {};
+        } catch { return {}; }
+      },
+      async set(key, value) {
+        try {
+          await fetch('/api/storage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key, value }),
+          });
+        } catch {}
+      },
+      async remove(key) {
+        try {
+          await fetch(`/api/storage/${encodeURIComponent(key)}`, { method: 'DELETE' });
+        } catch {}
+      },
+    };
+
     /* ========== 日期默认最近7天 ========== */
     function initDates() {
       const end = new Date();
@@ -273,48 +305,58 @@
     }
 
     /* ========== 主播管理 (name + id) ========== */
-    function getAnchors() {
+    let _anchorsCache = null;
+    let _selectedAnchorCache = null;
+
+    async function getAnchors() {
+      if (_anchorsCache !== null) return _anchorsCache;
       try {
-        const raw = JSON.parse(localStorage.getItem(ANCHORS_KEY)) || [];
-        // 兼容旧格式：纯字符串ID数组 → {id, name} 对象数组
-        return raw.map(a => typeof a === 'string' ? { id: a, name: a } : a);
+        const raw = await serverStorage.get(ANCHORS_KEY) || [];
+        _anchorsCache = raw.map(a => typeof a === 'string' ? { id: a, name: a } : a);
+        return _anchorsCache;
       } catch { return []; }
     }
-    function getSelectedAnchor() {
-      try { return localStorage.getItem(SELECTED_ANCHOR_KEY) || ''; } catch { return ''; }
+    async function getSelectedAnchor() {
+      if (_selectedAnchorCache !== null) return _selectedAnchorCache;
+      try { _selectedAnchorCache = (await serverStorage.get(SELECTED_ANCHOR_KEY)) || ''; return _selectedAnchorCache; } catch { return ''; }
     }
-    function setSelectedAnchor(id) {
-      localStorage.setItem(SELECTED_ANCHOR_KEY, id);
+    async function setSelectedAnchor(id) {
+      _selectedAnchorCache = id;
+      await serverStorage.set(SELECTED_ANCHOR_KEY, id);
       renderAnchors();
     }
-    function addAnchor() {
+    async function addAnchor() {
       const nameInput = document.getElementById('anchor_name_input');
       const idInput = document.getElementById('anchor_id_input');
       const name = nameInput.value.trim();
       const id = idInput.value.trim();
       if (!id) return;
-      const anchors = getAnchors();
+      const anchors = await getAnchors();
       if (!anchors.find(a => a.id === id)) {
         anchors.push({ id, name: name || id });
-        localStorage.setItem(ANCHORS_KEY, JSON.stringify(anchors));
+        _anchorsCache = anchors;
+        await serverStorage.set(ANCHORS_KEY, anchors);
       }
-      localStorage.setItem(SELECTED_ANCHOR_KEY, id);
+      _selectedAnchorCache = id;
+      await serverStorage.set(SELECTED_ANCHOR_KEY, id);
       nameInput.value = '';
       idInput.value = '';
       renderAnchors();
     }
-    function removeAnchor(id, e) {
+    async function removeAnchor(id, e) {
       e.stopPropagation();
-      const anchors = getAnchors().filter(a => a.id !== id);
-      localStorage.setItem(ANCHORS_KEY, JSON.stringify(anchors));
-      if (getSelectedAnchor() === id) {
-        localStorage.setItem(SELECTED_ANCHOR_KEY, anchors.length ? anchors[0].id : '');
+      const anchors = (await getAnchors()).filter(a => a.id !== id);
+      _anchorsCache = anchors;
+      await serverStorage.set(ANCHORS_KEY, anchors);
+      if ((await getSelectedAnchor()) === id) {
+        _selectedAnchorCache = anchors.length ? anchors[0].id : '';
+        await serverStorage.set(SELECTED_ANCHOR_KEY, _selectedAnchorCache);
       }
       renderAnchors();
     }
-    function renderAnchors() {
-      const anchors = getAnchors();
-      const selected = getSelectedAnchor();
+    async function renderAnchors() {
+      const anchors = await getAnchors();
+      const selected = await getSelectedAnchor();
       const container = document.getElementById('anchor_tags');
       if (anchors.length === 0) {
         container.innerHTML = '<span style="color:#999;font-size:13px;">暂无主播，请在上方输入名称和ID并添加</span>';
@@ -340,30 +382,34 @@
 
     /* ========== 艺名映射管理 ========== */
     const MAPPING_KEY = 'anchor_aweme_stage_mapping';
-    function getMappings() {
-      try { return JSON.parse(localStorage.getItem(MAPPING_KEY)) || {}; } catch { return {}; }
+    let _mappingsCache = null;
+    async function getMappings() {
+      if (_mappingsCache !== null) return _mappingsCache;
+      try { _mappingsCache = (await serverStorage.get(MAPPING_KEY)) || {}; return _mappingsCache; } catch { return {}; }
     }
-    function addMapping() {
+    async function addMapping() {
       const nkInput = document.getElementById('map_nickname_input');
       const snInput = document.getElementById('map_stagename_input');
       const awemeId = nkInput.value.trim();
       const stageName = snInput.value.trim();
       if (!awemeId || !stageName) return;
-      const mappings = getMappings();
+      const mappings = await getMappings();
       mappings[awemeId] = stageName;
-      localStorage.setItem(MAPPING_KEY, JSON.stringify(mappings));
+      _mappingsCache = mappings;
+      await serverStorage.set(MAPPING_KEY, mappings);
       nkInput.value = '';
       snInput.value = '';
       renderMappings();
     }
-    function removeMapping(awemeId) {
-      const mappings = getMappings();
+    async function removeMapping(awemeId) {
+      const mappings = await getMappings();
       delete mappings[awemeId];
-      localStorage.setItem(MAPPING_KEY, JSON.stringify(mappings));
+      _mappingsCache = mappings;
+      await serverStorage.set(MAPPING_KEY, mappings);
       renderMappings();
     }
-    function renderMappings() {
-      const mappings = getMappings();
+    async function renderMappings() {
+      const mappings = await getMappings();
       const container = document.getElementById('mapping_list');
       const keys = Object.keys(mappings);
       if (keys.length === 0) {
@@ -382,8 +428,9 @@
       html += '</tbody></table>';
       container.innerHTML = html;
     }
-    function getStageName(awemeDisplayId) {
-      return getMappings()[awemeDisplayId] || '';
+    async function getStageName(awemeDisplayId) {
+      const mappings = await getMappings();
+      return mappings[awemeDisplayId] || '';
     }
     document.getElementById('map_stagename_input').addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); addMapping(); }
@@ -421,20 +468,19 @@
     }
 
     /* ========== 表单缓存 ========== */
-    function saveForm() {
+    async function saveForm() {
       const data = {
         month: document.getElementById('month').value,
         start_date: document.getElementById('start_date').value,
         end_date: document.getElementById('end_date').value,
         cookie: document.getElementById('cookie').value,
       };
-      localStorage.setItem(FORM_KEY, JSON.stringify(data));
+      await serverStorage.set(FORM_KEY, data);
     }
-    function loadForm() {
+    async function loadForm() {
       try {
-        const raw = localStorage.getItem(FORM_KEY);
-        if (!raw) return false;
-        const data = JSON.parse(raw);
+        const data = await serverStorage.get(FORM_KEY);
+        if (!data) return false;
         let loaded = false;
         if (data.month) { document.getElementById('month').value = data.month; loaded = true; }
         if (data.start_date) { document.getElementById('start_date').value = data.start_date; loaded = true; }
@@ -443,7 +489,7 @@
         return loaded;
       } catch { return false; }
     }
-    function clearForm() {
+    async function clearForm() {
       document.getElementById('month').value = '';
       document.getElementById('start_date').value = '';
       document.getElementById('end_date').value = '';
@@ -452,7 +498,7 @@
       document.getElementById('results').classList.remove('show');
       document.getElementById('summary').classList.remove('show');
       hideError();
-      localStorage.removeItem(FORM_KEY);
+      await serverStorage.remove(FORM_KEY);
     }
 
     /* ========== 进度条 ========== */
@@ -482,7 +528,7 @@
     /* ========== 查询（SSE 进度流） ========== */
     async function doQuery() {
       hideError();
-      const anchor_id = getSelectedAnchor();
+      const anchor_id = await getSelectedAnchor();
       const month = document.getElementById('month').value.trim();
       const start_date = document.getElementById('start_date').value.trim();
       const end_date = document.getElementById('end_date').value.trim();
@@ -541,7 +587,7 @@
                 }
               } else if (evt.type === 'done') {
                 allDays.sort((a, b) => a.date.localeCompare(b.date));
-                renderResults({ days: allDays, summary });
+                await renderResults({ days: allDays, summary });
               } else if (evt.type === 'error') {
                 showError(evt.message || '查询失败');
               }
@@ -557,8 +603,9 @@
       }
     }
 
-    function renderResults(data) {
+    async function renderResults(data) {
       const { days, summary } = data;
+      const mappings = await getMappings();
       document.getElementById('totalIncome').textContent = formatNumber(summary.totalIncome);
       document.getElementById('totalStarGuardIncome').textContent = formatNumber(summary.totalStarGuardIncome);
       document.getElementById('totalOtherIncome').textContent = formatNumber(summary.totalOtherIncome);
@@ -593,7 +640,7 @@
             html += `<tr>
               <td><img class="avatar" src="${s.avatar}" onerror="this.style.display='none'"></td>
               <td>${escHtml(s.nickname)}</td>
-              <td>${getStageName(s.aweme_display_id) ? '<span class="stage-name">' + escHtml(getStageName(s.aweme_display_id)) + '</span>' : '<span style="color:#ccc">-</span>'}</td>
+              <td>${mappings[s.aweme_display_id] ? '<span class="stage-name">' + escHtml(mappings[s.aweme_display_id]) + '</span>' : '<span style="color:#ccc">-</span>'}</td>
               <td>${s.aweme_display_id}</td>
               <td class="income-highlight">${formatNumber(s.income)}</td>
               <td>${formatNumber(s.star_guard_income)}</td>
@@ -618,7 +665,7 @@
     }
 
     async function generateDailyReport() {
-      const anchors = getAnchors();
+      const anchors = await getAnchors();
       const cookie = document.getElementById('cookie').value.trim();
 
       if (anchors.length === 0) {
@@ -655,7 +702,7 @@
         }
 
         const { report, summary, date } = result.data;
-        const reportText = formatDailyReport(report, summary, date);
+        const reportText = await formatDailyReport(report, summary, date);
 
         document.getElementById('reportLoading').style.display = 'none';
         document.getElementById('reportText').value = reportText;
@@ -667,8 +714,8 @@
       }
     }
 
-    function formatDailyReport(report, summary, date) {
-      const mappings = getMappings();
+    async function formatDailyReport(report, summary, date) {
+      const mappings = await getMappings();
       let lines = [];
       lines.push(`📊 直播日报 ${date}`);
       lines.push('━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -748,14 +795,16 @@
     }
 
     /* ========== 初始化 ========== */
-    const hasCached = loadForm();
-    if (!hasCached) initDates();
-    renderAnchors();
-    renderMappings();
-    ['month', 'start_date', 'end_date', 'cookie'].forEach(id => {
-      document.getElementById(id).addEventListener('input', saveForm);
-      document.getElementById(id).addEventListener('change', saveForm);
-    });
+    (async () => {
+      const hasCached = await loadForm();
+      if (!hasCached) initDates();
+      await renderAnchors();
+      await renderMappings();
+      ['month', 'start_date', 'end_date', 'cookie'].forEach(id => {
+        document.getElementById(id).addEventListener('input', saveForm);
+        document.getElementById(id).addEventListener('change', saveForm);
+      });
+    })();
   </script>
 </body>
 </html>

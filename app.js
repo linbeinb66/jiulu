@@ -2,6 +2,7 @@ import express from 'express';
 import { setCookie, calendar, queryGiftIncomeByRoomId } from './api/index.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,6 +12,69 @@ const PORT = 3000;
 
 app.use(express.json());
 app.use(express.static(join(__dirname, 'public')));
+
+/* ========== 服务端存储 ========== */
+const STORAGE_FILE = join(__dirname, 'data', 'storage.json');
+
+function readStorage() {
+  try {
+    if (!existsSync(STORAGE_FILE)) return {};
+    return JSON.parse(readFileSync(STORAGE_FILE, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeStorage(data) {
+  const dir = join(__dirname, 'data');
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  writeFileSync(STORAGE_FILE, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+/**
+ * API: 获取存储数据
+ * GET /api/storage
+ * 可选 query: key - 获取指定 key 的数据，不传则返回全部
+ */
+app.get('/api/storage', (req, res) => {
+  const data = readStorage();
+  const key = req.query.key;
+  if (key) {
+    res.json({ success: true, data: data[key] ?? null });
+  } else {
+    res.json({ success: true, data });
+  }
+});
+
+/**
+ * API: 保存存储数据
+ * POST /api/storage
+ * body: { key, value } - 保存指定 key 的数据
+ */
+app.post('/api/storage', (req, res) => {
+  const { key, value } = req.body;
+  if (!key) {
+    return res.json({ success: false, message: '缺少 key 参数' });
+  }
+  const data = readStorage();
+  data[key] = value;
+  writeStorage(data);
+  res.json({ success: true });
+});
+
+/**
+ * API: 删除存储数据
+ * DELETE /api/storage/:key
+ */
+app.delete('/api/storage/:key', (req, res) => {
+  const key = req.params.key;
+  const data = readStorage();
+  delete data[key];
+  writeStorage(data);
+  res.json({ success: true });
+});
 
 /**
  * API: 查询主播流水
@@ -325,6 +389,127 @@ app.post('/api/daily-report', async (req, res) => {
     };
 
     res.json({ success: true, data: { report, summary, date: dateStr } });
+  } catch (err) {
+    res.json({ success: false, message: `请求异常: ${err.message}` });
+  }
+});
+
+/**
+ * API: 查询主播当日流水汇总
+ * GET /api/daily-income?anchor_id=xxx
+ * 从 storage 中读取 cookie，查询该主播当日所有房间的流水并合并返回
+ */
+app.get('/api/daily-income', async (req, res) => {
+  const { anchor_id } = req.query;
+
+  if (!anchor_id) {
+    return res.json({ success: false, message: '缺少 anchor_id 参数' });
+  }
+
+  try {
+    const storage = readStorage();
+    const cookie = storage.anchor_query_form?.cookie;
+
+    if (!cookie) {
+      return res.json({ success: false, message: '未找到 cookie 配置，请先在页面设置 cookie' });
+    }
+
+    setCookie(cookie);
+
+    // 计算当日日期
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const monthStr = `${year}-${month}`;
+    const dateStr = `${year}-${month}-${day}`;
+
+    // 日历查询范围设为前后3天以确保覆盖
+    const rangeStart = new Date(now);
+    rangeStart.setDate(rangeStart.getDate() - 3);
+    const rangeEnd = new Date(now);
+    rangeEnd.setDate(rangeEnd.getDate() + 3);
+    const startStr = `${rangeStart.getFullYear()}-${String(rangeStart.getMonth() + 1).padStart(2, '0')}-${String(rangeStart.getDate()).padStart(2, '0')}`;
+    const endStr = `${rangeEnd.getFullYear()}-${String(rangeEnd.getMonth() + 1).padStart(2, '0')}-${String(rangeEnd.getDate()).padStart(2, '0')}`;
+
+    // 1. 获取直播日历
+    const calendarRes = await calendar(monthStr, startStr, endStr, anchor_id);
+
+    if (calendarRes.status_code !== 0) {
+      return res.json({ success: false, message: `获取日历失败: ${calendarRes.message}` });
+    }
+
+    const days = calendarRes.data?.series || [];
+    const todayDays = days.filter(d => d.date === dateStr && d.room_ids && d.room_ids.trim() !== '');
+
+    if (todayDays.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          anchor_id,
+          date: dateStr,
+          hasLive: false,
+          totalIncome: 0,
+          totalStarGuardIncome: 0,
+          totalOtherIncome: 0,
+          totalIncreaseFans: 0,
+          rooms: [],
+        },
+      });
+    }
+
+    // 2. 逐房间查询流水并合并
+    let totalIncome = 0;
+    let totalStarGuardIncome = 0;
+    let totalOtherIncome = 0;
+    let totalIncreaseFans = 0;
+    let totalLiveDuration = 0;
+    const rooms = [];
+
+    for (const day of todayDays) {
+      const roomIds = day.room_ids.split(',');
+      totalLiveDuration += Number(day.live_duration) || 0;
+
+      for (const roomId of roomIds) {
+        try {
+          const incomeRes = await queryGiftIncomeByRoomId(roomId, anchor_id);
+
+          if (incomeRes.status_code === 0) {
+            const series = incomeRes.data?.series || [];
+
+            for (const item of series) {
+              totalIncome += Number(item.income) || 0;
+              totalStarGuardIncome += Number(item.star_guard_income) || 0;
+              totalOtherIncome += Number(item.other_income) || 0;
+              totalIncreaseFans += Number(item.increase_fans) || 0;
+            }
+
+            rooms.push({
+              roomId,
+              liveDuration: day.live_duration,
+              series,
+            });
+          }
+        } catch (err) {
+          // 单个房间查询失败不影响整体
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        anchor_id,
+        date: dateStr,
+        hasLive: true,
+        liveDuration: totalLiveDuration,
+        totalIncome,
+        totalStarGuardIncome,
+        totalOtherIncome,
+        totalIncreaseFans,
+        rooms,
+      },
+    });
   } catch (err) {
     res.json({ success: false, message: `请求异常: ${err.message}` });
   }
