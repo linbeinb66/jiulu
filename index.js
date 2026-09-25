@@ -401,7 +401,7 @@ app.post('/api/daily-report', async (req, res) => {
  * 从 storage 中读取 cookie，查询该主播当日所有房间的流水并合并返回
  */
 app.get('/api/daily-income', async (req, res) => {
-  const { anchor_id } = req.query;
+  const { anchor_id, date } = req.query;
 
   if (!anchor_id) {
     return res.json({ success: false, message: '缺少 anchor_id 参数' });
@@ -417,18 +417,25 @@ app.get('/api/daily-income', async (req, res) => {
 
     setCookie(cookie);
 
-    // 计算当日日期
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const monthStr = `${year}-${month}`;
-    const dateStr = `${year}-${month}-${day}`;
+    // 计算日期：优先使用传入的 date 参数，否则使用当日日期
+    let dateStr, monthStr;
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      dateStr = date;
+      monthStr = date.substring(0, 7);
+    } else {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      monthStr = `${year}-${month}`;
+      dateStr = `${year}-${month}-${day}`;
+    }
 
     // 日历查询范围设为前后3天以确保覆盖
-    const rangeStart = new Date(now);
+    const targetDate = new Date(dateStr + 'T00:00:00');
+    const rangeStart = new Date(targetDate);
     rangeStart.setDate(rangeStart.getDate() - 3);
-    const rangeEnd = new Date(now);
+    const rangeEnd = new Date(targetDate);
     rangeEnd.setDate(rangeEnd.getDate() + 3);
     const startStr = `${rangeStart.getFullYear()}-${String(rangeStart.getMonth() + 1).padStart(2, '0')}-${String(rangeStart.getDate()).padStart(2, '0')}`;
     const endStr = `${rangeEnd.getFullYear()}-${String(rangeEnd.getMonth() + 1).padStart(2, '0')}-${String(rangeEnd.getDate()).padStart(2, '0')}`;
