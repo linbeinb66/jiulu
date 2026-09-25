@@ -558,7 +558,7 @@ app.get('/api/admin/info', (req, res) => {
  */
 app.post('/api/admin/pull', (req, res) => {
   try {
-    const output = execSync('git pull', { cwd: __dirname, encoding: 'utf-8', timeout: 60000 });
+    const output = execSync('git pull -X theirs', { cwd: __dirname, encoding: 'utf-8', timeout: 60000 });
     res.json({ success: true, data: { output: output.trim() } });
   } catch (err) {
     res.json({ success: false, message: `Git pull 失败: ${err.message}` });
@@ -596,7 +596,7 @@ app.post('/api/admin/restart', (req, res) => {
  */
 app.post('/api/admin/update', (req, res) => {
   try {
-    const output = execSync('git pull', { cwd: __dirname, encoding: 'utf-8', timeout: 60000 });
+    const output = execSync('git pull -X theirs', { cwd: __dirname, encoding: 'utf-8', timeout: 60000 });
     res.json({ success: true, message: '更新成功，服务即将重启...', data: { output: output.trim() } });
     setTimeout(() => {
       restartSelf();
