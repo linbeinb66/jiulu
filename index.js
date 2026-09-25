@@ -78,29 +78,64 @@ app.delete('/api/storage/:key', (req, res) => {
 });
 
 /**
+ * 获取日期范围内的所有月份列表
+ * @param {string} startDate - 开始日期，如 2026-07-01
+ * @param {string} endDate - 结束日期，如 2026-09-25
+ * @returns {string[]} 月份列表，如 ['2026-07', '2026-08', '2026-09']
+ */
+function getMonthsInRange(startDate, endDate) {
+  const months = [];
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+  while (cur <= end) {
+    months.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`);
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return months;
+}
+
+/**
  * API: 查询主播流水
  * POST /api/query
- * body: { month, start_date, end_date, anchor_id, cookie }
+ * body: { start_date, end_date, anchor_id, cookie }
  */
 app.post('/api/query', async (req, res) => {
-  const { month, start_date, end_date, anchor_id, cookie } = req.body;
+  const { start_date, end_date, anchor_id, cookie } = req.body;
 
-  if (!month || !start_date || !end_date || !anchor_id || !cookie) {
+  if (!start_date || !end_date || !anchor_id || !cookie) {
     return res.json({ success: false, message: '参数不完整' });
   }
 
   try {
     setCookie(cookie);
 
-    // 1. 获取直播日历
-    const calendarRes = await calendar(month, start_date, end_date, anchor_id);
-
-    if (calendarRes.status_code !== 0) {
-      return res.json({ success: false, message: `获取日历失败: ${calendarRes.message}` });
+    // 1. 获取直播日历（遍历所有月份，合并去重）
+    const months = getMonthsInRange(start_date, end_date);
+    const allDays = [];
+    for (const m of months) {
+      try {
+        const calendarRes = await calendar(m, start_date, end_date, anchor_id);
+        if (calendarRes.status_code === 0) {
+          const days = calendarRes.data?.series || [];
+          allDays.push(...days);
+        }
+      } catch (err) {
+        // 单个月份查询失败不影响整体
+      }
     }
 
-    const days = calendarRes.data?.series || [];
-    const liveDays = days.filter(d => d.room_ids && d.room_ids.trim() !== '');
+    // 按日期去重
+    const seenDates = new Set();
+    const uniqueDays = [];
+    for (const d of allDays) {
+      if (!seenDates.has(d.date)) {
+        seenDates.add(d.date);
+        uniqueDays.push(d);
+      }
+    }
+
+    const liveDays = uniqueDays.filter(d => d.room_ids && d.room_ids.trim() !== '' && d.date >= start_date && d.date <= end_date);
 
     if (liveDays.length === 0) {
       return res.json({ success: true, data: { days: [], summary: { totalIncome: 0, totalStarGuardIncome: 0, totalOtherIncome: 0, totalIncreaseFans: 0 } } });
@@ -135,6 +170,7 @@ app.post('/api/query', async (req, res) => {
               date: day.date,
               roomId,
               liveDuration: day.live_duration,
+              liveCnt: day.live_cnt,
               series,
             });
           }
@@ -165,9 +201,9 @@ app.post('/api/query', async (req, res) => {
 });
 
 app.post('/api/query/stream', async (req, res) => {
-  const { month, start_date, end_date, anchor_id, cookie } = req.body;
+  const { start_date, end_date, anchor_id, cookie } = req.body;
 
-  if (!month || !start_date || !end_date || !anchor_id || !cookie) {
+  if (!start_date || !end_date || !anchor_id || !cookie) {
     return res.json({ success: false, message: '参数不完整' });
   }
 
@@ -184,19 +220,34 @@ app.post('/api/query/stream', async (req, res) => {
   try {
     setCookie(cookie);
 
-    // 1. 获取直播日历
+    // 1. 获取直播日历（遍历所有月份，合并去重）
     send('progress', { current: 0, total: 1, message: '获取直播日历...' });
 
-    const calendarRes = await calendar(month, start_date, end_date, anchor_id);
-
-    if (calendarRes.status_code !== 0) {
-      send('error', { message: `获取日历失败: ${calendarRes.message}` });
-      res.end();
-      return;
+    const months = getMonthsInRange(start_date, end_date);
+    const allDays = [];
+    for (const m of months) {
+      try {
+        const calendarRes = await calendar(m, start_date, end_date, anchor_id);
+        if (calendarRes.status_code === 0) {
+          const days = calendarRes.data?.series || [];
+          allDays.push(...days);
+        }
+      } catch (err) {
+        // 单个月份查询失败不影响整体
+      }
     }
 
-    const days = calendarRes.data?.series || [];
-    const liveDays = days.filter(d => d.room_ids && d.room_ids.trim() !== '');
+    // 按日期去重
+    const seenDates = new Set();
+    const uniqueDays = [];
+    for (const d of allDays) {
+      if (!seenDates.has(d.date)) {
+        seenDates.add(d.date);
+        uniqueDays.push(d);
+      }
+    }
+
+    const liveDays = uniqueDays.filter(d => d.room_ids && d.room_ids.trim() !== '' && d.date >= start_date && d.date <= end_date);
 
     if (liveDays.length === 0) {
       send('progress', { current: 1, total: 1, message: '无直播记录' });
@@ -225,6 +276,7 @@ app.post('/api/query/stream', async (req, res) => {
                 date: day.date,
                 roomId,
                 liveDuration: day.live_duration,
+                liveCnt: day.live_cnt,
                 series,
               },
             });

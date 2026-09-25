@@ -85,14 +85,14 @@
     .summary-item .value { font-size: 24px; font-weight: 700; }
     .summary-item .unit { font-size: 12px; opacity: 0.7; margin-top: 4px; }
     /* Day cards */
-    .day-card { background: #fff; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
-    .day-header { background: #fafafa; padding: 12px 20px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer; user-select: none; }
+    .day-card { background: #fff; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .day-header { background: #fafafa; padding: 12px 20px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer; user-select: none; position: sticky; top: 0; z-index: 50; border-radius: 12px 12px 0 0; }
     .day-header:hover { background: #f5f5f5; }
     .day-date { font-weight: 600; font-size: 15px; color: #1a1a2e; }
     .day-meta { font-size: 13px; color: #888; }
     .day-income { margin-left: auto; font-weight: 600; color: #4361ee; font-size: 15px; }
     .day-body { padding: 0 20px; max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
-    .day-body.open { max-height: 2000px; padding: 16px 20px; }
+    .day-body.open { max-height: 2000px; padding: 16px 20px; overflow: visible; }
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
     th { text-align: left; padding: 10px 12px; background: #f8f9fa; color: #666; font-weight: 600; font-size: 13px; border-bottom: 2px solid #e8e8e8; white-space: nowrap; }
     td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
@@ -104,6 +104,36 @@
     .results.show { display: block; }
     .arrow { transition: transform 0.3s; display: inline-block; margin-right: 8px; color: #999; }
     .arrow.open { transform: rotate(90deg); }
+    .room-section { margin-bottom: 16px; padding: 12px; background: #fafbfc; border-radius: 8px; border: 1px solid #f0f0f0; }
+    .room-section:last-child { margin-bottom: 0; }
+    .room-header { font-weight: 600; color: #555; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .room-id { color: #333; }
+    .room-duration { color: #888; font-size: 13px; margin-left: 8px; font-weight: 400; }
+    .room-income { color: #4361ee; font-weight: 600; }
+    .room-info-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; padding: 8px 12px; background: #f0f2f5; border-radius: 6px; }
+    .room-info-item { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+    .room-income-small { color: #4361ee; font-weight: 500; }
+    .day-summary-row { font-size: 13px; color: #666; padding: 6px 0 10px; border-bottom: 1px solid #f0f0f0; margin-bottom: 8px; }
+    .room-detail-toggle { border-top: 1px dashed #e8e8e8; padding-top: 8px; }
+    .room-detail-btn { font-size: 13px; color: #4361ee; cursor: pointer; user-select: none; transition: color 0.2s; }
+    .room-detail-btn:hover { color: #3a56d4; text-decoration: underline; }
+    .room-detail-btn::before { content: ''; display: inline-block; width: 0; height: 0; margin-right: 4px; }
+    .room-detail-btn.expanded::before { content: ''; }
+    .room-detail-list { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+    .room-detail-list.open { max-height: 5000px; }
+    .room-summary-mini { font-size: 12px; color: #999; margin-bottom: 6px; }
+    /* 日期目录 */
+    .day-toc { display: none; margin-bottom: 0; background: #f0f2f5; padding: 10px 0; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #e0e0e0; }
+    .day-toc.show { display: block; }
+    .toc-title { font-size: 13px; font-weight: 600; color: #888; margin-bottom: 8px; padding-left: 4px; }
+    .day-toc .toc-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    a.toc-item { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; background: #fff; border: 1px solid #e8e8e8; border-radius: 6px; font-size: 12px; color: #555; text-decoration: none; transition: all 0.15s; }
+    a.toc-item:hover { border-color: #4361ee; color: #4361ee; background: #f0f4ff; }
+    a.toc-item.active { border-color: #4361ee; color: #4361ee; background: #eef1ff; }
+    .toc-date { font-weight: 600; color: #333; }
+    a.toc-item:hover .toc-date { color: #4361ee; }
+    .toc-meta { color: #999; }
+    .toc-income { color: #4361ee; font-weight: 500; }
     /* Daily Report Modal */
     .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; align-items: center; justify-content: center; }
     .modal-overlay.show { display: flex; }
@@ -129,16 +159,22 @@
       <div class="card-title">查询参数</div>
       <div class="form-grid">
         <div class="form-group">
-          <label>月份</label>
-          <input type="month" id="month" onchange="onMonthChange()">
-        </div>
-        <div class="form-group">
           <label>开始日期</label>
           <input type="date" id="start_date">
         </div>
         <div class="form-group">
           <label>结束日期</label>
           <input type="date" id="end_date">
+        </div>
+        <div class="form-group full">
+          <label>快捷选择</label>
+          <div class="quick-date-btns" style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-sm btn-secondary" onclick="setQuickDate('today')">今日</button>
+            <button class="btn btn-sm btn-secondary" onclick="setQuickDate('yesterday')">昨日</button>
+            <button class="btn btn-sm btn-secondary" onclick="setQuickDate('thisWeek')">本周</button>
+            <button class="btn btn-sm btn-secondary" onclick="setQuickDate('thisMonth')">本月</button>
+            <button class="btn btn-sm btn-secondary" onclick="setQuickDate('last3Months')">近三月</button>
+          </div>
         </div>
         <div class="form-group full">
           <label>主播</label>
@@ -214,6 +250,7 @@
       </div>
     </div>
 
+    <div class="day-toc" id="dayToc"></div>
     <div class="results" id="results"></div>
   </div>
 
@@ -280,22 +317,39 @@
       start.setDate(start.getDate() - 6);
       document.getElementById('start_date').value = fmtDate(start);
       document.getElementById('end_date').value = fmtDate(end);
-      // 设置月份为当前月
-      const y = end.getFullYear();
-      const m = String(end.getMonth() + 1).padStart(2, '0');
-      document.getElementById('month').value = `${y}-${m}`;
     }
 
-    function onMonthChange() {
-      const val = document.getElementById('month').value;
-      if (!val) return;
-      const [year, month] = val.split('-').map(Number);
-      const firstDay = new Date(year, month - 1, 1);
-      const lastDay = new Date(year, month, 0);
-      const start = new Date(firstDay);
-      start.setDate(start.getDate() - start.getDay());
-      const end = new Date(lastDay);
-      end.setDate(end.getDate() + (6 - end.getDay()));
+    function setQuickDate(type) {
+      const now = new Date();
+      let start, end;
+      switch (type) {
+        case 'today':
+          start = new Date(now);
+          end = new Date(now);
+          break;
+        case 'yesterday':
+          start = new Date(now);
+          start.setDate(start.getDate() - 1);
+          end = new Date(start);
+          break;
+        case 'thisWeek':
+          start = new Date(now);
+          start.setDate(start.getDate() - start.getDay());
+          end = new Date(now);
+          break;
+        case 'thisMonth':
+          start = new Date(now.getFullYear(), now.getMonth(), 1);
+          end = new Date(now);
+          break;
+        case 'last3Months':
+          start = new Date(now);
+          start.setMonth(start.getMonth() - 2);
+          start.setDate(1);
+          end = new Date(now);
+          break;
+        default:
+          return;
+      }
       document.getElementById('start_date').value = fmtDate(start);
       document.getElementById('end_date').value = fmtDate(end);
       saveForm();
@@ -471,7 +525,6 @@
     /* ========== 表单缓存 ========== */
     async function saveForm() {
       const data = {
-        month: document.getElementById('month').value,
         start_date: document.getElementById('start_date').value,
         end_date: document.getElementById('end_date').value,
         cookie: document.getElementById('cookie').value,
@@ -483,7 +536,6 @@
         const data = await serverStorage.get(FORM_KEY);
         if (!data) return false;
         let loaded = false;
-        if (data.month) { document.getElementById('month').value = data.month; loaded = true; }
         if (data.start_date) { document.getElementById('start_date').value = data.start_date; loaded = true; }
         if (data.end_date) { document.getElementById('end_date').value = data.end_date; loaded = true; }
         if (data.cookie) { document.getElementById('cookie').value = data.cookie; }
@@ -491,12 +543,12 @@
       } catch { return false; }
     }
     async function clearForm() {
-      document.getElementById('month').value = '';
       document.getElementById('start_date').value = '';
       document.getElementById('end_date').value = '';
       document.getElementById('cookie').value = '';
       document.getElementById('cookie_status').textContent = '';
       document.getElementById('results').classList.remove('show');
+      document.getElementById('dayToc').classList.remove('show');
       document.getElementById('summary').classList.remove('show');
       hideError();
       await serverStorage.remove(FORM_KEY);
@@ -530,12 +582,11 @@
     async function doQuery() {
       hideError();
       const anchor_id = await getSelectedAnchor();
-      const month = document.getElementById('month').value.trim();
       const start_date = document.getElementById('start_date').value.trim();
       const end_date = document.getElementById('end_date').value.trim();
       const cookie = document.getElementById('cookie').value.trim();
 
-      if (!month || !start_date || !end_date || !anchor_id || !cookie) {
+      if (!start_date || !end_date || !anchor_id || !cookie) {
         showError('请填写所有参数并选择一个主播');
         return;
       }
@@ -545,6 +596,7 @@
       btn.disabled = true;
       loading.classList.add('show');
       document.getElementById('results').classList.remove('show');
+      document.getElementById('dayToc').classList.remove('show');
       document.getElementById('summary').classList.remove('show');
       showProgress();
       setProgress(0, 0, '准备中...');
@@ -553,7 +605,7 @@
         const res = await fetch('/api/query/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ month, start_date, end_date, anchor_id, cookie }),
+          body: JSON.stringify({ start_date, end_date, anchor_id, cookie }),
         });
 
         const reader = res.body.getReader();
@@ -620,24 +672,93 @@
         return;
       }
 
-      let html = '';
+      // 按日期分组
+      const groupedByDate = {};
       for (const day of days) {
-        const dayIncome = day.series.reduce((sum, s) => sum + (Number(s.income) || 0), 0);
-        html += `<div class="day-card">
+        if (!groupedByDate[day.date]) {
+          groupedByDate[day.date] = {
+            date: day.date,
+            liveDuration: day.liveDuration,
+            liveCnt: Number(day.liveCnt) || day.rooms?.length || 1,
+            rooms: [],
+          };
+        }
+        groupedByDate[day.date].rooms.push({
+          roomId: day.roomId,
+          series: day.series,
+        });
+      }
+      const dateGroups = Object.values(groupedByDate).sort((a, b) => a.date.localeCompare(b.date));
+
+      let html = '';
+      for (const group of dateGroups) {
+        const dayIncome = group.rooms.reduce((sum, r) => sum + r.series.reduce((s, item) => s + (Number(item.income) || 0), 0), 0);
+        const dayStarGuard = group.rooms.reduce((sum, r) => sum + r.series.reduce((s, item) => s + (Number(item.star_guard_income) || 0), 0), 0);
+        const dayOther = group.rooms.reduce((sum, r) => sum + r.series.reduce((s, item) => s + (Number(item.other_income) || 0), 0), 0);
+        const dayFans = group.rooms.reduce((sum, r) => sum + r.series.reduce((s, item) => s + (Number(item.increase_fans) || 0), 0), 0);
+        const roomCount = group.rooms.length;
+        const totalDuration = Number(group.liveDuration) || 0;
+        const isSingleRoom = roomCount === 1;
+
+        // 聚合所有房间的 series，按 aweme_display_id 合并
+        const memberMap = {};
+        for (const room of group.rooms) {
+          for (const s of room.series) {
+            const key = s.aweme_display_id || s.nickname || '_unknown';
+            if (!memberMap[key]) {
+              memberMap[key] = {
+                aweme_display_id: s.aweme_display_id || '',
+                nickname: s.nickname || '',
+                avatar: s.avatar || '',
+                income: 0,
+                star_guard_income: 0,
+                other_income: 0,
+                increase_fans: 0,
+              };
+            }
+            memberMap[key].income += Number(s.income) || 0;
+            memberMap[key].star_guard_income += Number(s.star_guard_income) || 0;
+            memberMap[key].other_income += Number(s.other_income) || 0;
+            memberMap[key].increase_fans += Number(s.increase_fans) || 0;
+          }
+        }
+        const aggregatedSeries = Object.values(memberMap).sort((a, b) => b.income - a.income);
+
+        html += `<div class="day-card" id="day-${group.date}">
           <div class="day-header" onclick="toggleDay(this)">
             <span class="arrow">&#9654;</span>
-            <span class="day-date">${day.date}</span>
-            <span class="day-meta">时长 ${formatDuration(Number(day.liveDuration)||0)} | 房间 ${day.roomId}</span>
+            <span class="day-date">${group.date}</span>
+            <span class="day-meta">总时长 ${formatDuration(totalDuration)} | ${roomCount}个房间 | ${aggregatedSeries.length}人</span>
             <span class="day-income">${formatNumber(dayIncome)} 抖币</span>
           </div>
           <div class="day-body">`;
-        if (day.series.length === 0) {
-          html += '<div class="no-data">暂无流水数据</div>';
+
+        // 房间信息栏
+        if (roomCount > 1) {
+          html += '<div class="room-info-bar">';
+          for (const room of group.rooms) {
+            const roomIncome = room.series.reduce((sum, s) => sum + (Number(s.income) || 0), 0);
+            html += `<span class="room-info-item"><span class="room-id">房间 ${room.roomId}</span><span class="room-income-small">${formatNumber(roomIncome)} 抖币</span></span>`;
+          }
+          html += '</div>';
+        } else if (isSingleRoom) {
+          const roomIncome = group.rooms[0].series.reduce((sum, s) => sum + (Number(s.income) || 0), 0);
+          html += `<div class="room-info-bar"><span class="room-info-item"><span class="room-id">房间 ${group.rooms[0].roomId}</span><span class="room-duration"> | 时长 ${formatDuration(totalDuration)}</span><span class="room-income-small">${formatNumber(roomIncome)} 抖币</span></span></div>`;
+        }
+
+        // 聚合后的汇总行
+        html += `<div class="day-summary-row">
+          <span>合计: 礼物 <b class="income-highlight">${formatNumber(dayIncome)}</b> | 星光 ${formatNumber(dayStarGuard)} | 其他 ${formatNumber(dayOther)} | 涨粉 ${formatNumber(dayFans)}</span>
+        </div>`;
+
+        // 聚合后的成员表格
+        if (aggregatedSeries.length === 0) {
+          html += '<div class="no-data" style="padding:12px;">暂无流水数据</div>';
         } else {
           html += `<table><thead><tr>
             <th></th><th>昵称</th><th>艺名</th><th>抖音号</th><th>礼物收入</th><th>星光收入</th><th>其他收入</th><th>涨粉</th>
           </tr></thead><tbody>`;
-          for (const s of day.series) {
+          for (const s of aggregatedSeries) {
             html += `<tr>
               <td><img class="avatar" src="${s.avatar}" onerror="this.style.display='none'"></td>
               <td>${escHtml(s.nickname)}</td>
@@ -651,11 +772,101 @@
           }
           html += '</tbody></table>';
         }
+
+        // 各房间明细（默认折叠）
+        if (roomCount > 1) {
+          html += '<div class="room-detail-toggle" style="margin-top:12px;"><span class="room-detail-btn" onclick="this.parentElement.nextElementSibling.classList.toggle(\'open\');this.classList.toggle(\'expanded\')">&#9654; 各房间明细</span></div>';
+          html += '<div class="room-detail-list">';
+          for (const room of group.rooms) {
+            const roomIncome = room.series.reduce((sum, s) => sum + (Number(s.income) || 0), 0);
+            const roomStarGuard = room.series.reduce((sum, s) => sum + (Number(s.star_guard_income) || 0), 0);
+            const roomOther = room.series.reduce((sum, s) => sum + (Number(s.other_income) || 0), 0);
+            const roomFans = room.series.reduce((sum, s) => sum + (Number(s.increase_fans) || 0), 0);
+            html += `<div class="room-section">
+              <div class="room-header">
+                <span><span class="room-id">房间 ${room.roomId}</span></span>
+                <span class="room-income">${formatNumber(roomIncome)} 抖币</span>
+              </div>
+              <div class="room-summary-mini">星光 ${formatNumber(roomStarGuard)} | 其他 ${formatNumber(roomOther)} | 涨粉 ${formatNumber(roomFans)}</div>`;
+            if (room.series.length === 0) {
+              html += '<div class="no-data" style="padding:8px;">暂无流水数据</div>';
+            } else {
+              html += `<table><thead><tr>
+                <th></th><th>昵称</th><th>艺名</th><th>抖音号</th><th>礼物收入</th><th>星光收入</th><th>其他收入</th><th>涨粉</th>
+              </tr></thead><tbody>`;
+              for (const s of room.series) {
+                html += `<tr>
+                  <td><img class="avatar" src="${s.avatar}" onerror="this.style.display='none'"></td>
+                  <td>${escHtml(s.nickname)}</td>
+                  <td>${mappings[s.aweme_display_id] ? '<span class="stage-name">' + escHtml(mappings[s.aweme_display_id]) + '</span>' : '<span style="color:#ccc">-</span>'}</td>
+                  <td>${s.aweme_display_id}</td>
+                  <td class="income-highlight">${formatNumber(s.income)}</td>
+                  <td>${formatNumber(s.star_guard_income)}</td>
+                  <td>${formatNumber(s.other_income)}</td>
+                  <td>${s.increase_fans}</td>
+                </tr>`;
+              }
+              html += '</tbody></table>';
+            }
+            html += '</div>';
+          }
+          html += '</div>';
+        }
+
         html += '</div></div>';
       }
       container.innerHTML = html;
       container.classList.add('show');
+
+      // 生成每日目录
+      const tocEl = document.getElementById('dayToc');
+      if (dateGroups.length === 0) {
+        tocEl.innerHTML = '';
+        tocEl.classList.remove('show');
+      } else {
+        tocEl.innerHTML = '<div class="toc-title">日期目录</div><div class="toc-list">' + dateGroups.map(g => {
+          const income = g.rooms.reduce((sum, r) => sum + r.series.reduce((s, item) => s + (Number(item.income) || 0), 0), 0);
+          const dur = Number(g.liveDuration) || 0;
+          const rc = g.rooms.length;
+          return `<a class="toc-item" href="#day-${g.date}" onclick="event.preventDefault();const tocH=document.getElementById('dayToc').offsetHeight;const el=document.getElementById('day-${g.date}');const y=el.getBoundingClientRect().top+window.scrollY-tocH-8;window.scrollTo({top:y,behavior:'smooth'})">
+            <span class="toc-date">${g.date}</span>
+            <span class="toc-meta">${formatDuration(dur)} | ${rc}房</span>
+            <span class="toc-income">${formatNumber(income)}</span>
+          </a>`;
+        }).join('') + '</div>';
+        tocEl.classList.add('show');
+      }
+
+      // 滚动监听：day-header top跟随TOC高度 + TOC高亮当前日期
+      updateStickyHeaders();
     }
+
+    function updateStickyHeaders() {
+      const toc = document.getElementById('dayToc');
+      const tocH = toc.classList.contains('show') ? toc.offsetHeight : 0;
+      document.querySelectorAll('.day-header').forEach(h => {
+        h.style.top = tocH + 'px';
+      });
+    }
+
+    // 滚动时高亮当前日期TOC项 + 更新sticky top
+    window.addEventListener('scroll', () => {
+      const toc = document.getElementById('dayToc');
+      if (!toc.classList.contains('show')) return;
+      updateStickyHeaders();
+
+      const cards = document.querySelectorAll('.day-card');
+      const tocItems = document.querySelectorAll('.toc-item');
+      let activeIdx = -1;
+      const tocH = toc.offsetHeight;
+      cards.forEach((card, i) => {
+        const rect = card.getBoundingClientRect();
+        if (rect.top <= tocH + 60) activeIdx = i;
+      });
+      tocItems.forEach((item, i) => {
+        item.classList.toggle('active', i === activeIdx);
+      });
+    }, { passive: true });
 
     /* ========== 日报生成 ========== */
     function openReportModal() {
@@ -801,7 +1012,7 @@
       if (!hasCached) initDates();
       await renderAnchors();
       await renderMappings();
-      ['month', 'start_date', 'end_date', 'cookie'].forEach(id => {
+      ['start_date', 'end_date', 'cookie'].forEach(id => {
         document.getElementById(id).addEventListener('input', saveForm);
         document.getElementById(id).addEventListener('change', saveForm);
       });
