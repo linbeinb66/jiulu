@@ -372,7 +372,7 @@ app.post('/api/daily-report', async (req, res) => {
 
         anchorResult.hasLive = true;
 
-        // 按 aweme_display_id 聚合子主播数据
+        // 按 user_id 聚合子主播数据
         const memberMap = {};
 
         for (const day of todayDays) {
@@ -399,10 +399,10 @@ app.post('/api/daily-report', async (req, res) => {
                   anchorResult.totalIncreaseFans += fans;
 
                   // 按子主播聚合
-                  const key = item.aweme_display_id || item.nickname || '_unknown';
+                  const key = item.user_id || item.nickname || '_unknown';
                   if (!memberMap[key]) {
                     memberMap[key] = {
-                      aweme_display_id: item.aweme_display_id || '',
+                      user_id: item.user_id || '',
                       nickname: item.nickname || '',
                       avatar: item.avatar || '',
                       income: 0,

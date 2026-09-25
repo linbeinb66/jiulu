@@ -45,17 +45,8 @@
     .anchor-tag .remove { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.1); font-size: 12px; line-height: 1; }
     .anchor-tag.active .remove { background: rgba(255,255,255,0.3); }
     .anchor-tag .remove:hover { background: #ff4d4f; color: #fff; }
-    /* Mapping table */
-    .mapping-card { margin-bottom: 20px; }
-    .mapping-input-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
-    .mapping-input-row input { flex: 1; min-width: 0; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 14px; outline: none; }
-    .mapping-input-row input:focus { border-color: #4361ee; box-shadow: 0 0 0 2px rgba(67,97,238,0.1); }
-    .mapping-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .mapping-table th { text-align: left; padding: 8px 12px; background: #f8f9fa; color: #666; font-weight: 600; font-size: 13px; border-bottom: 2px solid #e8e8e8; }
-    .mapping-table td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
-    .mapping-table .arrow-col { color: #999; text-align: center; width: 40px; }
-    .mapping-empty { text-align: center; color: #999; font-size: 13px; padding: 12px; }
-    .stage-name { color: #7b2ff7; font-weight: 600; }
+    /* Stage name */
+    .stage-name { color: #7b2ff7; font-weight: 600; } { color: #7b2ff7; font-weight: 600; }
     /* Cookie */
     .cookie-row { display: flex; gap: 8px; align-items: flex-end; }
     .cookie-row textarea { flex: 1; }
@@ -207,18 +198,7 @@
       </div>
     </div>
 
-    <div class="card mapping-card">
-      <div class="card-title">艺名映射</div>
-      <div class="mapping-input-row">
-        <input type="text" id="map_nickname_input" placeholder="抖音号">
-        <span style="color:#999;">→</span>
-        <input type="text" id="map_stagename_input" placeholder="艺名（自定义显示名）">
-        <button class="btn btn-primary btn-sm" onclick="addMapping()">添加</button>
-      </div>
-      <div id="mapping_list"></div>
-    </div>
-
-    <div class="error" id="error"></div>
+<div class="error" id="error"></div>
     <div class="progress-wrap" id="progress_wrap">
       <div class="progress-bar-bg">
         <div class="progress-bar-fill" id="progress_fill" style="width:0%"></div>
@@ -435,64 +415,13 @@
       if (e.key === 'Enter') { e.preventDefault(); document.getElementById('anchor_id_input').focus(); }
     });
 
-    /* ========== 艺名映射管理 ========== */
-    const MAPPING_KEY = 'anchor_aweme_stage_mapping';
+    /* ========== 艺名映射（只读，管理请前往配置面板） ========== */
+    const MAPPING_KEY = 'anchor_user_stage_mapping';
     let _mappingsCache = null;
     async function getMappings() {
       if (_mappingsCache !== null) return _mappingsCache;
       try { _mappingsCache = (await serverStorage.get(MAPPING_KEY)) || {}; return _mappingsCache; } catch { return {}; }
     }
-    async function addMapping() {
-      const nkInput = document.getElementById('map_nickname_input');
-      const snInput = document.getElementById('map_stagename_input');
-      const awemeId = nkInput.value.trim();
-      const stageName = snInput.value.trim();
-      if (!awemeId || !stageName) return;
-      const mappings = await getMappings();
-      mappings[awemeId] = stageName;
-      _mappingsCache = mappings;
-      await serverStorage.set(MAPPING_KEY, mappings);
-      nkInput.value = '';
-      snInput.value = '';
-      renderMappings();
-    }
-    async function removeMapping(awemeId) {
-      const mappings = await getMappings();
-      delete mappings[awemeId];
-      _mappingsCache = mappings;
-      await serverStorage.set(MAPPING_KEY, mappings);
-      renderMappings();
-    }
-    async function renderMappings() {
-      const mappings = await getMappings();
-      const container = document.getElementById('mapping_list');
-      const keys = Object.keys(mappings);
-      if (keys.length === 0) {
-        container.innerHTML = '<div class="mapping-empty">暂无映射，添加后查询结果将同时显示昵称和艺名</div>';
-        return;
-      }
-      let html = '<table class="mapping-table"><thead><tr><th>抖音号</th><th></th><th>艺名</th><th></th></tr></thead><tbody>';
-      for (const awId of keys) {
-        html += `<tr>
-          <td>${escHtml(awId)}</td>
-          <td class="arrow-col">→</td>
-          <td class="stage-name">${escHtml(mappings[awId])}</td>
-          <td><button class="btn btn-secondary btn-sm" onclick="removeMapping('${escHtml(awId).replace(/'/g,"\\'")}')">删除</button></td>
-        </tr>`;
-      }
-      html += '</tbody></table>';
-      container.innerHTML = html;
-    }
-    async function getStageName(awemeDisplayId) {
-      const mappings = await getMappings();
-      return mappings[awemeDisplayId] || '';
-    }
-    document.getElementById('map_stagename_input').addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); addMapping(); }
-    });
-    document.getElementById('map_nickname_input').addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('map_stagename_input').focus(); }
-    });
 
     /* ========== Cookie 自动提取 ========== */
     function extractCookie() {
@@ -700,14 +629,14 @@
         const totalDuration = Number(group.liveDuration) || 0;
         const isSingleRoom = roomCount === 1;
 
-        // 聚合所有房间的 series，按 aweme_display_id 合并
+        // 聚合所有房间的 series，按 user_id 合并
         const memberMap = {};
         for (const room of group.rooms) {
           for (const s of room.series) {
-            const key = s.aweme_display_id || s.nickname || '_unknown';
+            const key = s.user_id || s.nickname || '_unknown';
             if (!memberMap[key]) {
               memberMap[key] = {
-                aweme_display_id: s.aweme_display_id || '',
+                user_id: s.user_id || '',
                 nickname: s.nickname || '',
                 avatar: s.avatar || '',
                 income: 0,
@@ -762,8 +691,8 @@
             html += `<tr>
               <td><img class="avatar" src="${s.avatar}" onerror="this.style.display='none'"></td>
               <td>${escHtml(s.nickname)}</td>
-              <td>${mappings[s.aweme_display_id] ? '<span class="stage-name">' + escHtml(mappings[s.aweme_display_id]) + '</span>' : '<span style="color:#ccc">-</span>'}</td>
-              <td>${s.aweme_display_id}</td>
+              <td>${mappings[s.user_id] ? '<span class="stage-name">' + escHtml(mappings[s.user_id]) + '</span>' : '<span style="color:#ccc">-</span>'}</td>
+              <td>${s.user_id}</td>
               <td class="income-highlight">${formatNumber(s.income)}</td>
               <td>${formatNumber(s.star_guard_income)}</td>
               <td>${formatNumber(s.other_income)}</td>
@@ -798,8 +727,8 @@
                 html += `<tr>
                   <td><img class="avatar" src="${s.avatar}" onerror="this.style.display='none'"></td>
                   <td>${escHtml(s.nickname)}</td>
-                  <td>${mappings[s.aweme_display_id] ? '<span class="stage-name">' + escHtml(mappings[s.aweme_display_id]) + '</span>' : '<span style="color:#ccc">-</span>'}</td>
-                  <td>${s.aweme_display_id}</td>
+                  <td>${mappings[s.user_id] ? '<span class="stage-name">' + escHtml(mappings[s.user_id]) + '</span>' : '<span style="color:#ccc">-</span>'}</td>
+                  <td>${s.user_id}</td>
                   <td class="income-highlight">${formatNumber(s.income)}</td>
                   <td>${formatNumber(s.star_guard_income)}</td>
                   <td>${formatNumber(s.other_income)}</td>
@@ -971,8 +900,8 @@
           lines.push('');
           lines.push('   ── 成员明细 ──');
           for (const m of sortedMembers) {
-            const memberStageName = mappings[m.aweme_display_id] ? `（${mappings[m.aweme_display_id]}）` : '';
-            const displayName = m.nickname || m.aweme_display_id || '未知';
+            const memberStageName = mappings[m.user_id] ? `（${mappings[m.user_id]}）` : '';
+            const displayName = m.nickname || m.user_id || '未知';
             lines.push(`   🎤 ${displayName}${memberStageName}`);
             lines.push(`      💰 ${formatNumber(m.income)} 抖币 | ⭐ ${formatNumber(m.star_guard_income)} | 📦 ${formatNumber(m.other_income)} | 📈 涨粉 ${formatNumber(m.increase_fans)}`);
           }
@@ -1011,7 +940,6 @@
       const hasCached = await loadForm();
       if (!hasCached) initDates();
       await renderAnchors();
-      await renderMappings();
       ['start_date', 'end_date', 'cookie'].forEach(id => {
         document.getElementById(id).addEventListener('input', saveForm);
         document.getElementById(id).addEventListener('change', saveForm);

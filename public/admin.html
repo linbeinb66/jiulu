@@ -30,6 +30,7 @@
     .btn-success:hover:not(:disabled) { background: #3f9914; }
     .btn-secondary { background: #f0f0f0; color: #333; }
     .btn-secondary:hover:not(:disabled) { background: #e0e0e0; }
+    .btn-sm { padding: 6px 16px; font-size: 13px; }
     .log-box { background: #1a1a2e; color: #a9b7c6; border-radius: 8px; padding: 16px; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.6; max-height: 300px; overflow-y: auto; margin-top: 12px; white-space: pre-wrap; word-break: break-all; }
     .log-box .log-success { color: #52c41a; }
     .log-box .log-error { color: #ff4d4f; }
@@ -51,6 +52,23 @@
     .confirm-box .btn-row { justify-content: flex-end; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #e0e0e0; border-top-color: #4361ee; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 6px; }
+    /* Mapping management */
+    .mapping-input-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .mapping-input-row input { flex: 1; min-width: 0; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 14px; outline: none; }
+    .mapping-input-row input:focus { border-color: #4361ee; box-shadow: 0 0 0 2px rgba(67,97,238,0.1); }
+    .mapping-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .mapping-table th { text-align: left; padding: 8px 12px; background: #f8f9fa; color: #666; font-weight: 600; font-size: 13px; border-bottom: 2px solid #e8e8e8; }
+    .mapping-table td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
+    .mapping-table .arrow-col { color: #999; text-align: center; width: 40px; }
+    .mapping-empty { text-align: center; color: #999; font-size: 13px; padding: 12px; }
+    .stage-name { color: #7b2ff7; font-weight: 600; }
+    .mapping-actions { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+    .mapping-count { font-size: 13px; color: #888; margin-left: 4px; }
+    .import-area { display: none; margin-top: 12px; }
+    .import-area.show { display: block; }
+    .import-area textarea { width: 100%; min-height: 120px; border: 1px solid #d9d9d9; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 12px; resize: vertical; outline: none; }
+    .import-area textarea:focus { border-color: #4361ee; box-shadow: 0 0 0 2px rgba(67,97,238,0.1); }
+    .import-hint { font-size: 12px; color: #999; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -104,6 +122,33 @@
         <button class="btn btn-warning" id="restartBtn" onclick="confirmRestart()">仅重启服务</button>
       </div>
       <div class="log-box" id="logBox" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">🎭</span> 艺名映射配置</div>
+      <p style="font-size:13px;color:#888;margin-bottom:16px;">配置 user_id 与艺名的映射关系，查询结果将同时显示昵称和艺名。</p>
+      <div class="mapping-input-row">
+        <input type="text" id="map_user_id_input" placeholder="user_id">
+        <span style="color:#999;">→</span>
+        <input type="text" id="map_stagename_input" placeholder="艺名（自定义显示名）">
+        <button class="btn btn-primary btn-sm" onclick="addMapping()">添加</button>
+      </div>
+      <div class="mapping-actions">
+        <button class="btn btn-success btn-sm" onclick="exportConfig()">导出配置</button>
+        <button class="btn btn-secondary btn-sm" onclick="toggleImport()">导入配置</button>
+        <span class="mapping-count" id="mappingCount"></span>
+      </div>
+      <div class="import-area" id="importArea">
+        <textarea id="importText" placeholder='粘贴 JSON 格式配置数据（从导出文件复制）&#10;将合并到现有配置，相同 key 会覆盖'></textarea>
+        <div class="import-hint">支持从导出文件导入，相同 key 的配置会被覆盖</div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button class="btn btn-primary btn-sm" onclick="importConfig()">确认导入</button>
+          <button class="btn btn-secondary btn-sm" onclick="toggleImport()">取消</button>
+          <button class="btn btn-sm" style="background:#f0f0f0;color:#333;" onclick="document.getElementById('importFile').click()">从文件导入</button>
+          <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importFromFile(event)">
+        </div>
+      </div>
+      <div id="mapping_list"></div>
     </div>
   </div>
 
@@ -286,8 +331,123 @@
       document.getElementById('confirmOverlay').classList.remove('show');
     }
 
+    /* ========== 艺名映射管理 ========== */
+    const MAPPING_KEY = 'anchor_user_stage_mapping';
+    const serverStorage = {
+      async get(key) {
+        const url = key ? `/api/storage?key=${encodeURIComponent(key)}` : '/api/storage';
+        const res = await fetch(url);
+        const json = await res.json();
+        return json.data || null;
+      },
+      async set(key, value) {
+        await fetch('/api/storage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key, value })
+        });
+      },
+      async remove(key) {
+        await fetch(`/api/storage?key=${encodeURIComponent(key)}`, { method: 'DELETE' });
+      }
+    };
+
+    async function getMappings() {
+      return (await serverStorage.get(MAPPING_KEY)) || {};
+    }
+
+    async function addMapping() {
+      const uidEl = document.getElementById('map_user_id_input');
+      const nameEl = document.getElementById('map_stagename_input');
+      const uid = uidEl.value.trim();
+      const name = nameEl.value.trim();
+      if (!uid || !name) { alert('请填写 user_id 和艺名'); return; }
+      const mappings = await getMappings();
+      mappings[uid] = name;
+      await serverStorage.set(MAPPING_KEY, mappings);
+      uidEl.value = '';
+      nameEl.value = '';
+      renderMappings();
+    }
+
+    async function removeMapping(uid) {
+      const mappings = await getMappings();
+      delete mappings[uid];
+      await serverStorage.set(MAPPING_KEY, mappings);
+      renderMappings();
+    }
+
+    async function renderMappings() {
+      const mappings = await getMappings();
+      const container = document.getElementById('mapping_list');
+      const countEl = document.getElementById('mappingCount');
+      const keys = Object.keys(mappings);
+      countEl.textContent = keys.length ? `共 ${keys.length} 条` : '';
+      if (!keys.length) {
+        container.innerHTML = '<div class="mapping-empty">暂无映射，请添加或导入</div>';
+        return;
+      }
+      let html = '<table class="mapping-table"><thead><tr><th>user_id</th><th></th><th>艺名</th><th></th></tr></thead><tbody>';
+      keys.sort().forEach(uid => {
+        html += `<tr><td>${escHtml(uid)}</td><td class="arrow-col">→</td><td><span class="stage-name">${escHtml(mappings[uid])}</span></td><td><button class="btn btn-danger btn-sm" style="padding:4px 10px;font-size:12px;" onclick="removeMapping('${escHtml(uid)}')">删除</button></td></tr>`;
+      });
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    async function exportConfig() {
+      const allData = await serverStorage.get();
+      if (!allData || !Object.keys(allData).length) { alert('暂无配置数据可导出'); return; }
+      const blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'config_export.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function toggleImport() {
+      const area = document.getElementById('importArea');
+      area.classList.toggle('show');
+      if (!area.classList.contains('show')) {
+        document.getElementById('importText').value = '';
+      }
+    }
+
+    async function importConfig() {
+      const text = document.getElementById('importText').value.trim();
+      if (!text) { alert('请粘贴配置数据'); return; }
+      let imported;
+      try {
+        imported = JSON.parse(text);
+      } catch (e) { alert('JSON 格式错误: ' + e.message); return; }
+      if (typeof imported !== 'object' || imported === null || Array.isArray(imported)) {
+        alert('不支持的数据格式，请使用对象格式 { "key": value }');
+        return;
+      }
+      let count = 0;
+      for (const [key, value] of Object.entries(imported)) {
+        await serverStorage.set(key, value);
+        count++;
+      }
+      toggleImport();
+      renderMappings();
+      alert(`成功导入 ${count} 项配置`);
+    }
+
+    async function importFromFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      document.getElementById('importText').value = text;
+      importConfig();
+      event.target.value = '';
+    }
+
     /* ========== 初始化 ========== */
     refreshInfo();
+    renderMappings();
   </script>
 </body>
 </html>
