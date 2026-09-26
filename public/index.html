@@ -168,11 +168,11 @@
           </div>
         </div>
         <div class="form-group full">
-          <label>主播</label>
+          <label>团播账号</label>
           <div class="anchor-section">
             <div class="anchor-input-row">
-              <input type="text" id="anchor_name_input" placeholder="主播名称" style="flex:0.8;">
-              <input type="text" id="anchor_id_input" placeholder="主播ID">
+              <input type="text" id="anchor_name_input" placeholder="团播账号名称" style="flex:0.8;">
+              <input type="text" id="anchor_id_input" placeholder="团播账号ID">
               <button class="btn btn-primary btn-sm" onclick="addAnchor()">添加</button>
             </div>
             <div class="anchor-tags" id="anchor_tags"></div>
@@ -248,6 +248,24 @@
       <div class="modal-footer">
         <button class="btn btn-primary btn-sm" id="copyReportBtn" onclick="copyReport()" style="display:none;">复制日报</button>
         <button class="btn btn-secondary btn-sm" onclick="closeReportModal()">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 汇总查询弹窗 -->
+  <div class="modal-overlay" id="periodModal">
+    <div class="modal" style="max-width:950px;">
+      <div class="modal-header">
+        <h2 id="periodModalTitle">汇总查询</h2>
+        <button class="modal-close" onclick="closePeriodModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="report-loading" id="periodLoading"><span class="spinner"></span>正在查询所有主播流水，请稍候...</div>
+        <div id="periodContent" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary btn-sm" id="copyPeriodBtn" onclick="copyPeriodReport()" style="display:none;">复制汇总</button>
+        <button class="btn btn-secondary btn-sm" onclick="closePeriodModal()">关闭</button>
       </div>
     </div>
   </div>
@@ -339,9 +357,9 @@
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     }
 
-    /* ========== 主播管理 (name + id) ========== */
+    /* ========== 团播账号管理 (name + id) ========== */
     let _anchorsCache = null;
-    let _selectedAnchorCache = null;
+    let _selectedAnchorsCache = null;
 
     async function getAnchors() {
       if (_anchorsCache !== null) return _anchorsCache;
@@ -351,13 +369,22 @@
         return _anchorsCache;
       } catch { return []; }
     }
-    async function getSelectedAnchor() {
-      if (_selectedAnchorCache !== null) return _selectedAnchorCache;
-      try { _selectedAnchorCache = (await serverStorage.get(SELECTED_ANCHOR_KEY)) || ''; return _selectedAnchorCache; } catch { return ''; }
+    async function getSelectedAnchors() {
+      if (_selectedAnchorsCache !== null) return _selectedAnchorsCache;
+      try {
+        const raw = await serverStorage.get(SELECTED_ANCHOR_KEY);
+        if (Array.isArray(raw)) { _selectedAnchorsCache = raw; }
+        else if (typeof raw === 'string' && raw) { _selectedAnchorsCache = [raw]; }
+        else { _selectedAnchorsCache = []; }
+        return _selectedAnchorsCache;
+      } catch { return []; }
     }
-    async function setSelectedAnchor(id) {
-      _selectedAnchorCache = id;
-      await serverStorage.set(SELECTED_ANCHOR_KEY, id);
+    async function toggleSelectedAnchor(id) {
+      const selected = await getSelectedAnchors();
+      const idx = selected.indexOf(id);
+      if (idx >= 0) { selected.splice(idx, 1); } else { selected.push(id); }
+      _selectedAnchorsCache = [...selected];
+      await serverStorage.set(SELECTED_ANCHOR_KEY, _selectedAnchorsCache);
       renderAnchors();
     }
     async function addAnchor() {
@@ -372,8 +399,12 @@
         _anchorsCache = anchors;
         await serverStorage.set(ANCHORS_KEY, anchors);
       }
-      _selectedAnchorCache = id;
-      await serverStorage.set(SELECTED_ANCHOR_KEY, id);
+      const selected = await getSelectedAnchors();
+      if (!selected.includes(id)) {
+        selected.push(id);
+        _selectedAnchorsCache = [...selected];
+        await serverStorage.set(SELECTED_ANCHOR_KEY, _selectedAnchorsCache);
+      }
       nameInput.value = '';
       idInput.value = '';
       renderAnchors();
@@ -383,22 +414,21 @@
       const anchors = (await getAnchors()).filter(a => a.id !== id);
       _anchorsCache = anchors;
       await serverStorage.set(ANCHORS_KEY, anchors);
-      if ((await getSelectedAnchor()) === id) {
-        _selectedAnchorCache = anchors.length ? anchors[0].id : '';
-        await serverStorage.set(SELECTED_ANCHOR_KEY, _selectedAnchorCache);
-      }
+      const selected = (await getSelectedAnchors()).filter(s => s !== id);
+      _selectedAnchorsCache = selected;
+      await serverStorage.set(SELECTED_ANCHOR_KEY, selected);
       renderAnchors();
     }
     async function renderAnchors() {
       const anchors = await getAnchors();
-      const selected = await getSelectedAnchor();
+      const selected = await getSelectedAnchors();
       const container = document.getElementById('anchor_tags');
       if (anchors.length === 0) {
-        container.innerHTML = '<span style="color:#999;font-size:13px;">暂无主播，请在上方输入名称和ID并添加</span>';
+        container.innerHTML = '<span style="color:#999;font-size:13px;">暂无团播账号，请在上方输入名称和ID并添加</span>';
         return;
       }
       container.innerHTML = anchors.map(a =>
-        `<span class="anchor-tag ${a.id === selected ? 'active' : ''}" onclick="setSelectedAnchor('${a.id}')">
+        `<span class="anchor-tag ${selected.includes(a.id) ? 'active' : ''}" onclick="toggleSelectedAnchor('${a.id}')">
           <span class="tag-name">${escHtml(a.name)}</span>
           <span class="tag-id">(${a.id})</span>
           <span class="remove" onclick="removeAnchor('${a.id}', event)">&times;</span>
@@ -507,18 +537,26 @@
       arrow.classList.toggle('open');
     }
 
-    /* ========== 查询（SSE 进度流） ========== */
+    /* ========== 查询（SSE 进度流，支持多选团播账号） ========== */
     async function doQuery() {
       hideError();
-      const anchor_id = await getSelectedAnchor();
+      const selectedAnchors = await getSelectedAnchors();
       const start_date = document.getElementById('start_date').value.trim();
       const end_date = document.getElementById('end_date').value.trim();
       const cookie = document.getElementById('cookie').value.trim();
 
-      if (!start_date || !end_date || !anchor_id || !cookie) {
-        showError('请填写所有参数并选择一个主播');
+      if (!start_date || !end_date || !cookie) {
+        showError('请填写日期和Cookie');
         return;
       }
+      if (selectedAnchors.length === 0) {
+        showError('请选择至少一个团播账号');
+        return;
+      }
+
+      const anchors = await getAnchors();
+      const anchorMap = {};
+      for (const a of anchors) anchorMap[a.id] = a.name;
 
       const btn = document.getElementById('queryBtn');
       const loading = document.getElementById('loading');
@@ -530,54 +568,67 @@
       showProgress();
       setProgress(0, 0, '准备中...');
 
+      let allDays = [];
+      let summary = { totalIncome: 0, totalStarGuardIncome: 0, totalOtherIncome: 0, totalIncreaseFans: 0 };
+
       try {
-        const res = await fetch('/api/query/stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ start_date, end_date, anchor_id, cookie }),
-        });
+        for (let ai = 0; ai < selectedAnchors.length; ai++) {
+          const anchor_id = selectedAnchors[ai];
+          const anchorName = anchorMap[anchor_id] || anchor_id;
+          setProgress(0, 0, `查询 ${anchorName} (${ai + 1}/${selectedAnchors.length})...`);
 
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let allDays = [];
-        let summary = { totalIncome: 0, totalStarGuardIncome: 0, totalOtherIncome: 0, totalIncreaseFans: 0 };
+          try {
+            const res = await fetch('/api/query/stream', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ start_date, end_date, anchor_id, cookie }),
+            });
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
 
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
 
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            const jsonStr = line.slice(6).trim();
-            if (!jsonStr) continue;
-            try {
-              const evt = JSON.parse(jsonStr);
-              if (evt.type === 'progress') {
-                setProgress(evt.current, evt.total, evt.message || `${evt.current}/${evt.total}`);
-              } else if (evt.type === 'day') {
-                allDays.push(evt.data);
-                for (const s of evt.data.series) {
-                  summary.totalIncome += Number(s.income) || 0;
-                  summary.totalStarGuardIncome += Number(s.star_guard_income) || 0;
-                  summary.totalOtherIncome += Number(s.other_income) || 0;
-                  summary.totalIncreaseFans += Number(s.increase_fans) || 0;
-                }
-              } else if (evt.type === 'done') {
-                allDays.sort((a, b) => a.date.localeCompare(b.date));
-                await renderResults({ days: allDays, summary });
-              } else if (evt.type === 'error') {
-                showError(evt.message || '查询失败');
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || '';
+
+              for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const jsonStr = line.slice(6).trim();
+                if (!jsonStr) continue;
+                try {
+                  const evt = JSON.parse(jsonStr);
+                  if (evt.type === 'progress') {
+                    setProgress(evt.current, evt.total, `${anchorName} (${ai + 1}/${selectedAnchors.length}) - ${evt.message || ''}`);
+                  } else if (evt.type === 'day') {
+                    evt.data.anchor_id = anchor_id;
+                    evt.data.anchor_name = anchorName;
+                    allDays.push(evt.data);
+                    for (const s of evt.data.series) {
+                      summary.totalIncome += Number(s.income) || 0;
+                      summary.totalStarGuardIncome += Number(s.star_guard_income) || 0;
+                      summary.totalOtherIncome += Number(s.other_income) || 0;
+                      summary.totalIncreaseFans += Number(s.increase_fans) || 0;
+                    }
+                  } else if (evt.type === 'error') {
+                    showError(`${anchorName}: ${evt.message || '查询失败'}`);
+                  }
+                } catch (e) {}
               }
-            } catch (e) {}
+            }
+          } catch (err) {
+            showError(`${anchorName}: 网络请求失败`);
           }
         }
+
+        allDays.sort((a, b) => a.date.localeCompare(b.date));
+        await renderResults({ days: allDays, summary });
       } catch (err) {
-        showError('网络请求失败: ' + err.message);
+        showError('查询异常: ' + err.message);
       } finally {
         btn.disabled = false;
         loading.classList.remove('show');
@@ -603,6 +654,7 @@
 
       // 按日期分组
       const groupedByDate = {};
+      const anchorNames = new Set();
       for (const day of days) {
         if (!groupedByDate[day.date]) {
           groupedByDate[day.date] = {
@@ -615,11 +667,71 @@
         groupedByDate[day.date].rooms.push({
           roomId: day.roomId,
           series: day.series,
+          anchor_id: day.anchor_id || '',
+          anchor_name: day.anchor_name || '',
         });
+        if (day.anchor_name) anchorNames.add(day.anchor_name);
       }
       const dateGroups = Object.values(groupedByDate).sort((a, b) => a.date.localeCompare(b.date));
+      const hasMultiAnchors = anchorNames.size > 1;
+
+      // 全时段主播汇总（按 user_id 聚合所有日期）
+      const periodMap = {};
+      for (const g of dateGroups) {
+        for (const room of g.rooms) {
+          for (const s of room.series) {
+            const key = s.user_id || s.nickname || '_unknown';
+            if (!periodMap[key]) {
+              periodMap[key] = { user_id: s.user_id || '', nickname: s.nickname || '', avatar: s.avatar || '', income: 0, star_guard_income: 0, other_income: 0, increase_fans: 0, liveDays: new Set() };
+            }
+            periodMap[key].income += Number(s.income) || 0;
+            periodMap[key].star_guard_income += Number(s.star_guard_income) || 0;
+            periodMap[key].other_income += Number(s.other_income) || 0;
+            periodMap[key].increase_fans += Number(s.increase_fans) || 0;
+            periodMap[key].liveDays.add(g.date);
+          }
+        }
+      }
+      const periodList = Object.values(periodMap).sort((a, b) => b.income - a.income);
+      const pTotalIncome = periodList.reduce((s, m) => s + m.income, 0);
+      const pTotalStarGuard = periodList.reduce((s, m) => s + m.star_guard_income, 0);
+      const pTotalOther = periodList.reduce((s, m) => s + m.other_income, 0);
+      const pTotalFans = periodList.reduce((s, m) => s + m.increase_fans, 0);
 
       let html = '';
+      // 全时段汇总卡片（默认折叠）
+      if (periodList.length > 0) {
+        html += `<div class="day-card" style="border-left:3px solid #4361ee;">
+          <div class="day-header" onclick="toggleDay(this)" style="background:#f0f4ff;">
+            <span class="arrow">&#9654;</span>
+            <span class="day-date">全时段汇总</span>
+            <span class="day-meta">${periodList.length}人 | 礼物 <b class="income-highlight">${formatNumber(pTotalIncome)}</b> | 星光 ${formatNumber(pTotalStarGuard)} | 其他 ${formatNumber(pTotalOther)} | 涨粉 ${formatNumber(pTotalFans)}</span>
+          </div>
+          <div class="day-body">
+            <table><thead><tr><th></th><th>昵称</th><th>艺名</th><th>抖音号</th><th>礼物收入</th><th>星光收入</th><th>其他收入</th><th>涨粉</th><th>开播天数</th></tr></thead><tbody>`;
+        for (const m of periodList) {
+          html += `<tr>
+            <td><img class="avatar" src="${m.avatar}" onerror="this.style.display='none'"></td>
+            <td>${escHtml(m.nickname)}</td>
+            <td>${mappings[m.user_id] ? '<span class="stage-name">' + escHtml(mappings[m.user_id]) + '</span>' : '<span style="color:#ccc">-</span>'}</td>
+            <td>${m.user_id}</td>
+            <td class="income-highlight">${formatNumber(m.income)}</td>
+            <td>${formatNumber(m.star_guard_income)}</td>
+            <td>${formatNumber(m.other_income)}</td>
+            <td>${m.increase_fans}</td>
+            <td>${m.liveDays.size}</td>
+          </tr>`;
+        }
+        html += `<tr style="font-weight:600;border-top:2px solid #e0e0e0;background:#f8f9fa;">
+          <td colspan="4">合计</td>
+          <td class="income-highlight">${formatNumber(pTotalIncome)}</td>
+          <td>${formatNumber(pTotalStarGuard)}</td>
+          <td>${formatNumber(pTotalOther)}</td>
+          <td>${pTotalFans}</td>
+          <td>-</td>
+        </tr>`;
+        html += '</tbody></table></div></div>';
+      }
       for (const group of dateGroups) {
         const dayIncome = group.rooms.reduce((sum, r) => sum + r.series.reduce((s, item) => s + (Number(item.income) || 0), 0), 0);
         const dayStarGuard = group.rooms.reduce((sum, r) => sum + r.series.reduce((s, item) => s + (Number(item.star_guard_income) || 0), 0), 0);
@@ -663,11 +775,12 @@
           <div class="day-body">`;
 
         // 房间信息栏
-        if (roomCount > 1) {
+        if (roomCount > 1 || hasMultiAnchors) {
           html += '<div class="room-info-bar">';
           for (const room of group.rooms) {
             const roomIncome = room.series.reduce((sum, s) => sum + (Number(s.income) || 0), 0);
-            html += `<span class="room-info-item"><span class="room-id">房间 ${room.roomId}</span><span class="room-income-small">${formatNumber(roomIncome)} 抖币</span></span>`;
+            const anchorLabel = hasMultiAnchors && room.anchor_name ? `<span class="stage-name">${escHtml(room.anchor_name)}</span> ` : '';
+            html += `<span class="room-info-item">${anchorLabel}<span class="room-id">房间 ${room.roomId}</span><span class="room-income-small">${formatNumber(roomIncome)} 抖币</span></span>`;
           }
           html += '</div>';
         } else if (isSingleRoom) {
@@ -810,7 +923,7 @@
       const cookie = document.getElementById('cookie').value.trim();
 
       if (anchors.length === 0) {
-        showError('请先添加主播');
+        showError('请先添加团播账号');
         return;
       }
       if (!cookie) {
@@ -932,6 +1045,181 @@
         const orig = btn.textContent;
         btn.textContent = '已复制 ✓';
         setTimeout(() => { btn.textContent = orig; }, 2000);
+      });
+    }
+
+    /* ========== 汇总查询 ========== */
+    function openPeriodModal() {
+      document.getElementById('periodModal').classList.add('show');
+    }
+    function closePeriodModal() {
+      document.getElementById('periodModal').classList.remove('show');
+    }
+
+    async function generatePeriodReport() {
+      const anchors = await getAnchors();
+      const cookie = document.getElementById('cookie').value.trim();
+      const start_date = document.getElementById('start_date').value.trim();
+      const end_date = document.getElementById('end_date').value.trim();
+
+      if (anchors.length === 0) {
+        showError('请先添加团播账号');
+        return;
+      }
+      if (!cookie) {
+        showError('请填写Cookie');
+        return;
+      }
+      if (!start_date || !end_date) {
+        showError('请选择开始和结束日期');
+        return;
+      }
+
+      hideError();
+      openPeriodModal();
+      document.getElementById('periodLoading').style.display = 'block';
+      document.getElementById('periodContent').style.display = 'none';
+      document.getElementById('copyPeriodBtn').style.display = 'none';
+
+      try {
+        const res = await fetch('/api/period-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ anchors, cookie, start_date, end_date }),
+        });
+
+        const result = await res.json();
+
+        if (!result.success) {
+          document.getElementById('periodLoading').innerHTML = `<span style="color:#ff4d4f;">查询失败: ${escHtml(result.message)}</span>`;
+          return;
+        }
+
+        const { report, summary, start_date: sd, end_date: ed } = result.data;
+        renderPeriodReport(report, summary, sd, ed);
+
+        document.getElementById('periodLoading').style.display = 'none';
+        document.getElementById('periodContent').style.display = 'block';
+        document.getElementById('copyPeriodBtn').style.display = 'inline-block';
+        document.getElementById('periodModalTitle').textContent = `汇总查询 - ${sd} 至 ${ed}`;
+      } catch (err) {
+        document.getElementById('periodLoading').innerHTML = `<span style="color:#ff4d4f;">请求失败: ${escHtml(err.message)}</span>`;
+      }
+    }
+
+    async function renderPeriodReport(report, summary, startDate, endDate) {
+      const mappings = await getMappings();
+      let html = '';
+
+      // 汇总卡片
+      html += `<div class="summary show" style="margin-bottom:16px;">
+        <div class="summary-item"><div class="label">主播数</div><div class="value">${summary.totalAnchors}</div><div class="unit">人</div></div>
+        <div class="summary-item"><div class="label">开播数</div><div class="value">${summary.liveCount}</div><div class="unit">人</div></div>
+        <div class="summary-item"><div class="label">礼物总收入</div><div class="value">${formatNumber(summary.totalIncome)}</div><div class="unit">抖币</div></div>
+        <div class="summary-item"><div class="label">星光总收入</div><div class="value">${formatNumber(summary.totalStarGuardIncome)}</div><div class="unit">抖币</div></div>
+        <div class="summary-item"><div class="label">其他总收入</div><div class="value">${formatNumber(summary.totalOtherIncome)}</div><div class="unit">抖币</div></div>
+        <div class="summary-item"><div class="label">总涨粉数</div><div class="value">${formatNumber(summary.totalIncreaseFans)}</div><div class="unit">人</div></div>
+      </div>`;
+
+      // 各主播汇总表格
+      html += `<div class="card" style="margin-bottom:16px;">
+        <div class="card-title">各主播汇总</div>
+        <table><thead><tr><th>主播</th><th>艺名</th><th>开播天数</th><th>直播时长</th><th>礼物收入</th><th>星光收入</th><th>其他收入</th><th>涨粉</th></tr></thead><tbody>`;
+
+      for (const anchor of report) {
+        const stageName = mappings[anchor.id] ? `<span class="stage-name">${escHtml(mappings[anchor.id])}</span>` : '<span style="color:#ccc">-</span>';
+        const nameDisplay = escHtml(anchor.name);
+        if (anchor.error) {
+          html += `<tr><td>${nameDisplay}</td><td>${stageName}</td><td colspan="6" style="color:#ff4d4f;">${escHtml(anchor.error)}</td></tr>`;
+        } else if (!anchor.hasLive) {
+          html += `<tr><td>${nameDisplay}</td><td>${stageName}</td><td colspan="6" style="color:#999;">未开播</td></tr>`;
+        } else {
+          html += `<tr>
+            <td>${nameDisplay}</td>
+            <td>${stageName}</td>
+            <td>${anchor.liveDays}</td>
+            <td>${formatDuration(anchor.totalLiveDuration)}</td>
+            <td class="income-highlight">${formatNumber(anchor.totalIncome)}</td>
+            <td>${formatNumber(anchor.totalStarGuardIncome)}</td>
+            <td>${formatNumber(anchor.totalOtherIncome)}</td>
+            <td>${formatNumber(anchor.totalIncreaseFans)}</td>
+          </tr>`;
+        }
+      }
+
+      // 合计行
+      html += `<tr style="font-weight:600;border-top:2px solid #e0e0e0;background:#f8f9fa;">
+        <td colspan="2">合计</td>
+        <td>-</td>
+        <td>-</td>
+        <td class="income-highlight">${formatNumber(summary.totalIncome)}</td>
+        <td>${formatNumber(summary.totalStarGuardIncome)}</td>
+        <td>${formatNumber(summary.totalOtherIncome)}</td>
+        <td>${formatNumber(summary.totalIncreaseFans)}</td>
+      </tr>`;
+      html += '</tbody></table></div>';
+
+      // 各主播成员明细（可折叠）
+      for (const anchor of report) {
+        if (!anchor.hasLive || !anchor.members || anchor.members.length === 0) continue;
+        const stageName = mappings[anchor.id] ? `（${escHtml(mappings[anchor.id])}）` : '';
+        html += `<div class="day-card" style="border-left:3px solid #52c41a;">
+          <div class="day-header" onclick="toggleDay(this)" style="background:#f6ffed;">
+            <span class="arrow">&#9654;</span>
+            <span class="day-date">${escHtml(anchor.name)}${stageName}</span>
+            <span class="day-meta">${anchor.liveDays}天 | ${anchor.members.length}人</span>
+            <span class="day-income">${formatNumber(anchor.totalIncome)} 抖币</span>
+          </div>
+          <div class="day-body">
+            <table><thead><tr><th></th><th>昵称</th><th>艺名</th><th>抖音号</th><th>礼物收入</th><th>星光收入</th><th>其他收入</th><th>涨粉</th></tr></thead><tbody>`;
+        for (const m of anchor.members) {
+          html += `<tr>
+            <td><img class="avatar" src="${m.avatar}" onerror="this.style.display='none'"></td>
+            <td>${escHtml(m.nickname)}</td>
+            <td>${mappings[m.user_id] ? '<span class="stage-name">' + escHtml(mappings[m.user_id]) + '</span>' : '<span style="color:#ccc">-</span>'}</td>
+            <td>${m.user_id}</td>
+            <td class="income-highlight">${formatNumber(m.income)}</td>
+            <td>${formatNumber(m.star_guard_income)}</td>
+            <td>${formatNumber(m.other_income)}</td>
+            <td>${formatNumber(m.increase_fans)}</td>
+          </tr>`;
+        }
+        html += `<tr style="font-weight:600;border-top:2px solid #e0e0e0;background:#f8f9fa;">
+          <td colspan="4">合计</td>
+          <td class="income-highlight">${formatNumber(anchor.totalIncome)}</td>
+          <td>${formatNumber(anchor.totalStarGuardIncome)}</td>
+          <td>${formatNumber(anchor.totalOtherIncome)}</td>
+          <td>${formatNumber(anchor.totalIncreaseFans)}</td>
+        </tr>`;
+        html += '</tbody></table></div></div>';
+      }
+
+      document.getElementById('periodContent').innerHTML = html;
+    }
+
+    function copyPeriodReport() {
+      const content = document.getElementById('periodContent');
+      if (!content) return;
+      // 生成纯文本
+      const tables = content.querySelectorAll('table');
+      let text = '';
+      tables.forEach(table => {
+        const rows = table.querySelectorAll('tr');
+        rows.forEach(row => {
+          const cells = row.querySelectorAll('th, td');
+          const vals = [];
+          cells.forEach(cell => vals.push(cell.textContent.trim()));
+          text += vals.join('\t') + '\n';
+        });
+        text += '\n';
+      });
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copyPeriodBtn');
+        const orig = btn.textContent;
+        btn.textContent = '已复制 ✓';
+        setTimeout(() => { btn.textContent = orig; }, 2000);
+      }).catch(() => {
+        // fallback
       });
     }
 

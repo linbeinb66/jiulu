@@ -448,6 +448,149 @@ app.post('/api/daily-report', async (req, res) => {
 });
 
 /**
+ * API: 查询所有主播在日期范围内的流水汇总
+ * POST /api/period-report
+ * body: { anchors: [{id, name}], cookie, start_date, end_date }
+ */
+app.post('/api/period-report', async (req, res) => {
+  const { anchors, cookie, start_date, end_date } = req.body;
+
+  if (!anchors || !Array.isArray(anchors) || anchors.length === 0 || !cookie || !start_date || !end_date) {
+    return res.json({ success: false, message: '参数不完整' });
+  }
+
+  try {
+    setCookie(cookie);
+
+    const months = getMonthsInRange(start_date, end_date);
+    const report = [];
+
+    for (const anchor of anchors) {
+      const anchorResult = {
+        id: anchor.id,
+        name: anchor.name || anchor.id,
+        totalIncome: 0,
+        totalStarGuardIncome: 0,
+        totalOtherIncome: 0,
+        totalIncreaseFans: 0,
+        totalLiveDuration: 0,
+        liveDays: 0,
+        roomCount: 0,
+        hasLive: false,
+        members: [],
+      };
+
+      try {
+        // 获取直播日历
+        const allDays = [];
+        for (const m of months) {
+          try {
+            const calendarRes = await calendar(m, start_date, end_date, anchor.id);
+            if (calendarRes.status_code === 0) {
+              const days = calendarRes.data?.series || [];
+              allDays.push(...days);
+            }
+          } catch (err) {
+            // 单月失败不影响整体
+          }
+        }
+
+        // 去重
+        const seenDates = new Set();
+        const uniqueDays = [];
+        for (const d of allDays) {
+          if (!seenDates.has(d.date)) {
+            seenDates.add(d.date);
+            uniqueDays.push(d);
+          }
+        }
+
+        const liveDays = uniqueDays.filter(d => d.room_ids && d.room_ids.trim() !== '' && d.date >= start_date && d.date <= end_date);
+
+        if (liveDays.length === 0) {
+          report.push(anchorResult);
+          continue;
+        }
+
+        anchorResult.hasLive = true;
+        anchorResult.liveDays = liveDays.length;
+
+        // 按 user_id 聚合子主播数据
+        const memberMap = {};
+
+        for (const day of liveDays) {
+          const roomIds = day.room_ids.split(',');
+          anchorResult.totalLiveDuration += Number(day.live_duration) || 0;
+
+          for (const roomId of roomIds) {
+            try {
+              const incomeRes = await queryGiftIncomeByRoomId(roomId, anchor.id);
+
+              if (incomeRes.status_code === 0) {
+                const series = incomeRes.data?.series || [];
+                anchorResult.roomCount++;
+
+                for (const item of series) {
+                  const income = Number(item.income) || 0;
+                  const starGuard = Number(item.star_guard_income) || 0;
+                  const other = Number(item.other_income) || 0;
+                  const fans = Number(item.increase_fans) || 0;
+
+                  anchorResult.totalIncome += income;
+                  anchorResult.totalStarGuardIncome += starGuard;
+                  anchorResult.totalOtherIncome += other;
+                  anchorResult.totalIncreaseFans += fans;
+
+                  // 按子主播聚合
+                  const key = item.user_id || item.nickname || '_unknown';
+                  if (!memberMap[key]) {
+                    memberMap[key] = {
+                      user_id: item.user_id || '',
+                      nickname: item.nickname || '',
+                      avatar: item.avatar || '',
+                      income: 0,
+                      star_guard_income: 0,
+                      other_income: 0,
+                      increase_fans: 0,
+                    };
+                  }
+                  memberMap[key].income += income;
+                  memberMap[key].star_guard_income += starGuard;
+                  memberMap[key].other_income += other;
+                  memberMap[key].increase_fans += fans;
+                }
+              }
+            } catch (err) {
+              // 单个房间查询失败不影响整体
+            }
+          }
+        }
+
+        anchorResult.members = Object.values(memberMap).sort((a, b) => b.income - a.income);
+      } catch (err) {
+        anchorResult.error = `查询异常: ${err.message}`;
+      }
+
+      report.push(anchorResult);
+    }
+
+    // 汇总
+    const summary = {
+      totalIncome: report.reduce((s, a) => s + a.totalIncome, 0),
+      totalStarGuardIncome: report.reduce((s, a) => s + a.totalStarGuardIncome, 0),
+      totalOtherIncome: report.reduce((s, a) => s + a.totalOtherIncome, 0),
+      totalIncreaseFans: report.reduce((s, a) => s + a.totalIncreaseFans, 0),
+      liveCount: report.filter(a => a.hasLive).length,
+      totalAnchors: report.length,
+    };
+
+    res.json({ success: true, data: { report, summary, start_date, end_date } });
+  } catch (err) {
+    res.json({ success: false, message: `请求异常: ${err.message}` });
+  }
+});
+
+/**
  * API: 查询主播当日流水汇总
  * GET /api/daily-income?anchor_id=xxx
  * 从 storage 中读取 cookie，查询该主播当日所有房间的流水并合并返回
